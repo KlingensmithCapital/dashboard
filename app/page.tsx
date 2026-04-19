@@ -1,17 +1,11 @@
 import { createClient } from "@/utils/supabase/server"
 import { cookies } from "next/headers"
 import { signOut } from "@/app/login/actions"
+import { GenerateBriefButton } from "@/app/components/GenerateBriefButton"
+import { SyncPricesButton } from "@/app/components/SyncPricesButton"
+import { TickerTape } from "@/app/components/TickerTape"
 
 type Status = "GREEN" | "AMBER" | "RED"
-
-const tape = [
-  { label: "SPX", value: "5,214", move: "+0.42%", tone: "text-emerald-600" },
-  { label: "NDX", value: "18,044", move: "+0.67%", tone: "text-emerald-600" },
-  { label: "VIX", value: "14.8", move: "-4.90%", tone: "text-emerald-600" },
-  { label: "UST 10Y", value: "4.18%", move: "-6 bps", tone: "text-sky-600" },
-  { label: "WTI", value: "$81.44", move: "+0.31%", tone: "text-amber-600" },
-  { label: "BTC", value: "$84.2K", move: "+1.14%", tone: "text-emerald-600" },
-]
 
 
 const priorities = [
@@ -101,19 +95,30 @@ export default async function HomePage() {
   const cookieStore = await cookies()
   const supabase = createClient(cookieStore)
 
-  const { data: holdings } = await supabase
-    .from("holdings")
-    .select("ticker, theme, weight_pct, market_value, pnl_pct, status, accounts(name)")
-    .eq("is_active", true)
-    .order("weight_pct", { ascending: false })
+  const [holdingsRes, balanceRes, briefRes] = await Promise.all([
+    supabase
+      .from("holdings")
+      .select("ticker, theme, weight_pct, market_value, pnl_pct, status, accounts(name)")
+      .eq("is_active", true)
+      .order("weight_pct", { ascending: false }),
+    supabase
+      .from("balances")
+      .select("value, cash_available")
+      .is("account_id", null)
+      .order("date", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("morning_briefs")
+      .select("market_summary, portfolio_notes, flight_plan, market_context, watchpoints, generated_at")
+      .order("date", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ])
 
-  const { data: balance } = await supabase
-    .from("balances")
-    .select("value, cash_available")
-    .is("account_id", null)
-    .order("date", { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const holdings = holdingsRes.data
+  const balance = balanceRes.data
+  const brief = briefRes.data
 
   const livePositions = (holdings ?? []).map((h) => ({
     ticker: h.ticker,
@@ -139,20 +144,7 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen bg-[#f5f6f8] text-slate-900">
-      {/* Ticker tape */}
-      <div className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-[1600px] overflow-hidden px-4 py-2 sm:px-6">
-          <div className="ticker-tape flex min-w-max items-center gap-8">
-            {tape.concat(tape).map((item, index) => (
-              <div key={`${item.label}-${index}`} className="flex min-w-max items-center gap-3 text-[11px] uppercase tracking-[0.22em] text-slate-400">
-                <span className="font-semibold text-slate-700">{item.label}</span>
-                <span className="text-slate-500">{item.value}</span>
-                <span className={item.tone}>{item.move}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+      <TickerTape />
 
       <div className="mx-auto flex max-w-[1600px] flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
 
@@ -200,44 +192,68 @@ export default async function HomePage() {
                   <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Morning Brief</p>
                   <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Pre-market setup · decision support</h2>
                 </div>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-emerald-700">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  Updated 06:20 CT
-                </span>
+                <div className="flex items-center gap-3">
+                  {brief?.generated_at && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-emerald-700">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      {new Date(brief.generated_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZoneName: "short" })}
+                    </span>
+                  )}
+                  <GenerateBriefButton />
+                </div>
               </div>
-              <div className="mt-5 grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
-                <div className="space-y-2.5">
-                  {briefItems.map((line) => (
-                    <div key={line} className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm leading-7 text-slate-600">{line}</div>
-                  ))}
-                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Market Context</p>
-                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                      {[
-                        { label: "Leadership", note: "AI beta and power beneficiaries remain in control." },
-                        { label: "Rates", note: "Lower yields are helping duration and easing stress." },
-                        { label: "Risk Posture", note: "Constructive — keep catalyst sizing tight in speculative names." },
-                      ].map((ctx) => (
-                        <div key={ctx.label}>
-                          <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">{ctx.label}</p>
-                          <p className="mt-1 text-sm text-slate-600">{ctx.note}</p>
+
+              {brief ? (
+                <div className="mt-5 grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+                  <div className="space-y-2.5">
+                    <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm leading-7 text-slate-600">{brief.market_summary}</div>
+                    <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm leading-7 text-slate-600">{brief.portfolio_notes}</div>
+                    {brief.watchpoints?.length > 0 && (
+                      <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Watchpoints</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {brief.watchpoints.map((w: string) => (
+                            <span key={w} className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-amber-200">{w}</span>
+                          ))}
                         </div>
+                      </div>
+                    )}
+                    {brief.market_context && (
+                      <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                        <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Market Context</p>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                          {[
+                            { label: "Leadership", note: (brief.market_context as { leadership: string }).leadership },
+                            { label: "Rates", note: (brief.market_context as { rates: string }).rates },
+                            { label: "Risk Posture", note: (brief.market_context as { risk_posture: string }).risk_posture },
+                          ].map((ctx) => (
+                            <div key={ctx.label}>
+                              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">{ctx.label}</p>
+                              <p className="mt-1 text-sm text-slate-600">{ctx.note}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">PM Flight Plan</p>
+                    <ul className="mt-3 space-y-3">
+                      {(brief.flight_plan as string[]).map((item, i) => (
+                        <li key={i} className="flex gap-3 text-sm leading-6 text-slate-600">
+                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-500">{i + 1}</span>
+                          {item}
+                        </li>
                       ))}
-                    </div>
+                    </ul>
                   </div>
                 </div>
-                <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                  <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">PM Flight Plan</p>
-                  <ul className="mt-3 space-y-3">
-                    {flightPlan.map((item, i) => (
-                      <li key={item} className="flex gap-3 text-sm leading-6 text-slate-600">
-                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-500">{i + 1}</span>
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
+              ) : (
+                <div className="mt-8 flex flex-col items-center justify-center gap-3 py-10 text-center">
+                  <p className="text-sm text-slate-500">No brief generated yet for today.</p>
+                  <p className="text-xs text-slate-400">Hit "Generate Brief" to run the Morning Brief Agent against your live portfolio.</p>
                 </div>
-              </div>
+              )}
             </section>
 
             {/* Zone 3 — Portfolio Snapshot */}
@@ -247,9 +263,12 @@ export default async function HomePage() {
                   <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Portfolio Snapshot</p>
                   <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Holdings, concentration, and pressure points</h2>
                 </div>
-                <a href="/api/schwab/connect" className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-sm font-medium text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700">
-                  Connect Schwab
-                </a>
+                <div className="flex items-center gap-2">
+                  <SyncPricesButton />
+                  <a href="/api/schwab/connect" className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-sm font-medium text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700">
+                    Connect Schwab
+                  </a>
+                </div>
               </div>
               <div className="mt-5 grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
                 <div className="overflow-hidden rounded-xl border border-slate-100">
