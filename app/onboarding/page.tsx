@@ -1,3 +1,10 @@
+const ERROR_MESSAGES: Record<string, string> = {
+  cancelled: "Authorization was cancelled. Please try again.",
+  token_exchange: "Schwab rejected the connection — your app may still be pending approval. Try again or check your Schwab developer portal.",
+  storage: "Connected to Schwab but failed to save — please try again.",
+  unknown: "Something went wrong. Please try again.",
+}
+
 export default function OnboardingPage({
   searchParams,
 }: {
@@ -37,7 +44,7 @@ export default function OnboardingPage({
 
           {searchParams.error && (
             <p className="mt-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600">
-              Connection failed — please try again.
+              {ERROR_MESSAGES[searchParams.error] ?? "Connection failed — please try again."}
             </p>
           )}
 

@@ -4,6 +4,7 @@ import { signOut } from "@/app/login/actions"
 import { GenerateBriefButton } from "@/app/components/GenerateBriefButton"
 import { SyncPricesButton } from "@/app/components/SyncPricesButton"
 import { TickerTape } from "@/app/components/TickerTape"
+import { AutoSync } from "@/app/components/AutoSync"
 
 type Status = "GREEN" | "AMBER" | "RED"
 
@@ -144,6 +145,7 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen bg-[#f5f6f8] text-slate-900">
+      <AutoSync />
       <TickerTape />
 
       <div className="mx-auto flex max-w-[1600px] flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
