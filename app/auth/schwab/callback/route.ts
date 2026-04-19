@@ -65,7 +65,8 @@ export async function GET(request: NextRequest) {
     return response
 
   } catch (err) {
+    const msg = encodeURIComponent(String(err))
     console.error("Schwab callback error:", err)
-    return NextResponse.redirect(`${origin}/onboarding?error=unknown`)
+    return NextResponse.redirect(`${origin}/onboarding?error=unknown&detail=${msg}`)
   }
 }

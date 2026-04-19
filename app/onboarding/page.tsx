@@ -8,9 +8,9 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function OnboardingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>
+  searchParams: Promise<{ error?: string; detail?: string }>
 }) {
-  const { error } = await searchParams
+  const { error, detail } = await searchParams
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f5f6f8] px-4">
@@ -45,9 +45,10 @@ export default async function OnboardingPage({
           </div>
 
           {error && (
-            <p className="mt-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600">
-              {ERROR_MESSAGES[error] ?? "Connection failed — please try again."}
-            </p>
+            <div className="mt-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600">
+              <p>{ERROR_MESSAGES[error] ?? "Connection failed — please try again."}</p>
+              {detail && <p className="mt-1 font-mono text-xs opacity-70">{detail}</p>}
+            </div>
           )}
 
           <a
