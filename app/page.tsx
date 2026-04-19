@@ -118,7 +118,7 @@ export default async function HomePage() {
   const livePositions = (holdings ?? []).map((h) => ({
     ticker: h.ticker,
     theme: h.theme ?? "",
-    account: (h.accounts as { name: string } | null)?.name ?? "",
+    account: (Array.isArray(h.accounts) ? h.accounts[0]?.name : (h.accounts as { name: string } | null)?.name) ?? "",
     weight: `${h.weight_pct}%`,
     value: `$${Number(h.market_value).toLocaleString()}`,
     pnl: `${h.pnl_pct > 0 ? "+" : ""}${h.pnl_pct}%`,
