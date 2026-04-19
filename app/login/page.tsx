@@ -1,10 +1,12 @@
 import { signIn } from "./actions"
 
-export default function LoginPage({
+export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: { error?: string }
+  searchParams: Promise<{ error?: string }>
 }) {
+  const { error } = await searchParams
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f5f6f8] px-4">
       <div className="w-full max-w-sm">
@@ -45,9 +47,9 @@ export default function LoginPage({
               />
             </div>
 
-            {searchParams.error && (
+            {error && (
               <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600">
-                {searchParams.error}
+                {error}
               </p>
             )}
 

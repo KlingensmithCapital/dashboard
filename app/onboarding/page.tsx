@@ -5,11 +5,13 @@ const ERROR_MESSAGES: Record<string, string> = {
   unknown: "Something went wrong. Please try again.",
 }
 
-export default function OnboardingPage({
+export default async function OnboardingPage({
   searchParams,
 }: {
-  searchParams: { error?: string }
+  searchParams: Promise<{ error?: string }>
 }) {
+  const { error } = await searchParams
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f5f6f8] px-4">
       <div className="w-full max-w-md">
@@ -42,9 +44,9 @@ export default function OnboardingPage({
             ))}
           </div>
 
-          {searchParams.error && (
+          {error && (
             <p className="mt-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm text-rose-600">
-              {ERROR_MESSAGES[searchParams.error] ?? "Connection failed — please try again."}
+              {ERROR_MESSAGES[error] ?? "Connection failed — please try again."}
             </p>
           )}
 
