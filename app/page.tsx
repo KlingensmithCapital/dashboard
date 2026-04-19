@@ -3,6 +3,7 @@ import { cookies } from "next/headers"
 import { signOut } from "@/app/login/actions"
 import { GenerateBriefButton } from "@/app/components/GenerateBriefButton"
 import { SyncPricesButton } from "@/app/components/SyncPricesButton"
+import { SyncSchwabButton } from "@/app/components/SyncSchwabButton"
 import { TickerTape } from "@/app/components/TickerTape"
 import { AutoSync } from "@/app/components/AutoSync"
 
@@ -266,10 +267,8 @@ export default async function HomePage() {
                   <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Holdings, concentration, and pressure points</h2>
                 </div>
                 <div className="flex items-center gap-2">
+                  <SyncSchwabButton />
                   <SyncPricesButton />
-                  <a href="/api/schwab/connect" className="rounded-full border border-slate-200 bg-white px-4 py-1.5 text-sm font-medium text-slate-600 transition hover:border-emerald-300 hover:text-emerald-700">
-                    Connect Schwab
-                  </a>
                 </div>
               </div>
               <div className="mt-5 grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
