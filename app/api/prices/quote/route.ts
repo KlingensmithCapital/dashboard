@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
-import yahooFinance from "yahoo-finance2"
+import YahooFinance from "yahoo-finance2"
+
+const yf = new YahooFinance()
 
 type YFQuote = { regularMarketPrice?: number; regularMarketChangePercent?: number }
 
@@ -16,7 +18,7 @@ export async function GET(request: NextRequest) {
   const symbols = searchParams.get("symbols")?.split(",") ?? INDICES
 
   const results = await Promise.allSettled(
-    symbols.map((s) => yahooFinance.quote(s) as Promise<YFQuote>)
+    symbols.map((s) => yf.quote(s) as Promise<YFQuote>)
   )
 
   const quotes = results
@@ -31,7 +33,11 @@ export async function GET(request: NextRequest) {
       return {
         symbol,
         label: LABELS[symbol] ?? symbol,
-        value: isRate ? `${price.toFixed(2)}%` : price >= 1000 ? price.toLocaleString("en-US", { maximumFractionDigits: 0 }) : price.toFixed(2),
+        value: isRate
+          ? `${price.toFixed(2)}%`
+          : price >= 1000
+          ? price.toLocaleString("en-US", { maximumFractionDigits: 0 })
+          : price.toFixed(2),
         change: `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`,
         tone: symbol === "^VIX"
           ? (change <= 0 ? "up" : "dn")
