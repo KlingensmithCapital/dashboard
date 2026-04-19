@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server"
 
 const PUBLIC_PATHS = ["/login", "/auth/schwab/callback"]
 const ONBOARDING_PATH = "/onboarding"
+const SCHWAB_COOKIE = "schwab_connected"
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -45,34 +46,21 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Logged in but no Schwab connection → onboarding
-  if (user && !isPublic && !isOnboarding && !isApiRoute) {
-    const { data: token } = await supabase
-      .from("schwab_tokens")
-      .select("id")
-      .eq("user_id", user.id)
-      .maybeSingle()
+  // Check Schwab connection via lightweight cookie (no DB call)
+  const hasSchwabCookie = request.cookies.get(SCHWAB_COOKIE)?.value === "1"
 
-    if (!token) {
-      const url = request.nextUrl.clone()
-      url.pathname = ONBOARDING_PATH
-      return NextResponse.redirect(url)
-    }
+  // Logged in but no Schwab connection → onboarding
+  if (user && !isPublic && !isOnboarding && !isApiRoute && !hasSchwabCookie) {
+    const url = request.nextUrl.clone()
+    url.pathname = ONBOARDING_PATH
+    return NextResponse.redirect(url)
   }
 
-  // Has Schwab token → skip onboarding
-  if (user && isOnboarding) {
-    const { data: token } = await supabase
-      .from("schwab_tokens")
-      .select("id")
-      .eq("user_id", user.id)
-      .maybeSingle()
-
-    if (token) {
-      const url = request.nextUrl.clone()
-      url.pathname = "/"
-      return NextResponse.redirect(url)
-    }
+  // Has Schwab cookie → skip onboarding
+  if (user && isOnboarding && hasSchwabCookie) {
+    const url = request.nextUrl.clone()
+    url.pathname = "/"
+    return NextResponse.redirect(url)
   }
 
   return response

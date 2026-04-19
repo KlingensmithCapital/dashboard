@@ -53,7 +53,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${origin}/onboarding?error=storage`)
     }
 
-    return NextResponse.redirect(`${origin}/`)
+    // Set lightweight cookie so proxy can gate without a DB call
+    const response = NextResponse.redirect(`${origin}/`)
+    response.cookies.set("schwab_connected", "1", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365, // 1 year
+    })
+    return response
 
   } catch (err) {
     console.error("Schwab callback error:", err)

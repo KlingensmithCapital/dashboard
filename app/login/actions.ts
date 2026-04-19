@@ -24,5 +24,6 @@ export async function signOut() {
   const cookieStore = await cookies()
   const supabase = createClient(cookieStore)
   await supabase.auth.signOut()
+  cookieStore.set("schwab_connected", "", { maxAge: 0, path: "/" })
   redirect("/login")
 }
