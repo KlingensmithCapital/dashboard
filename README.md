@@ -1,36 +1,58 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# PM Cockpit
+
+This app is the active build target for the Klingensmith Capital Portfolio Manager Cockpit.
+
+It is being rebuilt from scratch as a personal capital operating system with:
+
+- a live balance-sheet view
+- a morning brief
+- portfolio monitoring
+- thesis memory
+- an idea engine
+- embedded AI agent workflows
+
+## Product Direction
+
+The visual anchor for this build is:
+
+- `../../artifacts/legacy/dashboard-v3/kc_dashboard_v3.html`
+
+That prototype should guide information density, command-center feel, and PM workflow, while the actual app architecture moves forward in Next.js.
+
+## Workspace Context
+
+- `app/page.tsx`
+  Current cockpit shell and landing experience
+- `../../docs/product/homepage-blueprint.md`
+  High-level page blueprint
+- `../../docs/design/visual-direction.md`
+  Visual design rules
+- `../../docs/agents/agent-workflows.md`
+  How agents should contribute to the product
+- `../../reference-materials/current/`
+  Current reference materials that may inform product logic
 
 ## Getting Started
 
-First, run the development server:
+Install dependencies and run the local dev server:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Build Rules
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Build the new product in this app, not in legacy folders.
+- Use `dashboard-v3` as inspiration, not as technical architecture.
+- Keep agent outputs native to the product experience whenever possible.
+- Treat reference materials as inputs, not as the current source of truth.
 
-## Learn More
+## Near-Term Priorities
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- establish the cockpit shell
+- define real data entities and app structure
+- wire auth and account scaffolding
+- introduce agent-backed morning brief and memory flows
