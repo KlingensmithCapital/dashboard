@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Set lightweight cookie so proxy can gate without a DB call
-    const response = NextResponse.redirect(`${origin}/`)
+    const response = NextResponse.redirect(`${origin}/?schwab=connected`)
     response.cookies.set("schwab_connected", "1", {
       httpOnly: true,
       secure: true,
