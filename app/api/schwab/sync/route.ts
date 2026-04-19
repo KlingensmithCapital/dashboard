@@ -48,12 +48,21 @@ async function getValidAccessToken(userId: string, admin: ReturnType<typeof crea
 
 function mapAccountType(schwabType: string): string {
   const t = (schwabType ?? "").toUpperCase()
-  if (t.includes("IRA")) return "roth_ira"
   if (t.includes("ROTH")) return "roth_ira"
-  if (t.includes("TRADITIONAL")) return "traditional_ira"
+  if (t.includes("TRADITIONAL") && t.includes("IRA")) return "traditional_ira"
+  if (t.includes("IRA")) return "roth_ira"
   if (t.includes("HSA")) return "hsa"
   if (t.includes("CASH")) return "cash"
   return "taxable"
+}
+
+function accountName(schwabType: string, accountNumber: string): string {
+  const last4 = accountNumber?.slice(-4) ?? ""
+  const t = (schwabType ?? "").toUpperCase()
+  if (t.includes("ROTH")) return `Roth IRA (${last4})`
+  if (t.includes("IRA")) return `IRA (${last4})`
+  if (t.includes("HSA")) return `HSA (${last4})`
+  return `Taxable (${last4})`
 }
 
 export async function POST() {
@@ -90,24 +99,32 @@ export async function POST() {
       const acct = entry.securitiesAccount
       if (!acct) continue
 
+      const schwabAccountNumber = acct.accountNumber ?? acct.hashValue ?? String(Math.random())
       const accountType = mapAccountType(acct.type ?? "")
-      const accountName = acct.type?.includes("IRA") ? "Roth IRA" : "Taxable"
+      const name = accountName(acct.type ?? "", schwabAccountNumber)
 
-      // Find or create account by user_id + type
+      // Find or create account keyed by external_id (Schwab account number)
       let accountId: string | null = null
       const { data: existing } = await admin
         .from("accounts")
         .select("id")
         .eq("user_id", user.id)
-        .eq("type", accountType)
+        .eq("external_id", schwabAccountNumber)
         .maybeSingle()
 
       if (existing) {
         accountId = existing.id
+        await admin.from("accounts").update({ name, type: accountType }).eq("id", accountId)
       } else {
         const { data: created } = await admin
           .from("accounts")
-          .insert({ user_id: user.id, name: accountName, institution: "Schwab", type: accountType })
+          .insert({
+            user_id: user.id,
+            name,
+            institution: "Schwab",
+            type: accountType,
+            external_id: schwabAccountNumber,
+          })
           .select("id")
           .single()
         accountId = created?.id ?? null
