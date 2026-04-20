@@ -75,7 +75,7 @@ export default async function HomePage() {
   const cookieStore = await cookies()
   const supabase = createClient(cookieStore)
 
-  const [holdingsRes, balanceRes, briefRes, catalystsRes, ideasRes, thesesRes] = await Promise.all([
+  const [holdingsRes, balanceRes, accountsRes, briefRes, catalystsRes, ideasRes, thesesRes] = await Promise.all([
     supabase
       .from("holdings")
       .select("id, ticker, theme, weight_pct, market_value, cost_basis, shares, pnl_pct, status, last_synced, accounts(name)")
@@ -86,6 +86,9 @@ export default async function HomePage() {
       .select("account_id, value, cash_available, date")
       .order("date", { ascending: false })
       .limit(50),
+    supabase
+      .from("accounts")
+      .select("id, name, type, institution"),
     supabase
       .from("morning_briefs")
       .select("market_summary, portfolio_notes, flight_plan, market_context, watchpoints, generated_at")
@@ -112,9 +115,12 @@ export default async function HomePage() {
       .limit(4),
   ])
 
+
   const holdings = holdingsRes.data ?? []
   const allBalances = balanceRes.data ?? []
-  // Take the most recent balance row per account
+  const allAccounts = accountsRes.data ?? []
+
+  // Most recent balance per account
   const latestBalanceByAccount = new Map<string, { value: number; cash_available: number }>()
   for (const b of allBalances) {
     if (b.account_id && !latestBalanceByAccount.has(b.account_id)) {
@@ -124,17 +130,36 @@ export default async function HomePage() {
       })
     }
   }
+
+  // Accounts that have active holdings = equity accounts
+  const equityAccountIds = new Set(holdings.map(h => {
+    const acct = h.accounts as { name: string } | null
+    return acct ? allAccounts.find(a => a.name === acct.name)?.id : undefined
+  }).filter(Boolean))
+
+  // Cash-only accounts = have a balance but no active equity holdings
+  const cashAccounts = allAccounts
+    .filter(a => latestBalanceByAccount.has(a.id) && !equityAccountIds.has(a.id))
+    .map(a => ({
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      institution: a.institution,
+      value: latestBalanceByAccount.get(a.id)!.value,
+    }))
+    .sort((a, b) => b.value - a.value)
+
   const brief = briefRes.data
   const dbCatalysts = catalystsRes.data ?? []
   const dbIdeas = ideasRes.data ?? []
   const dbTheses = thesesRes.data ?? []
 
-  // Derived metrics — sum across all accounts
-  const balanceEntries = Array.from(latestBalanceByAccount.values())
-  const totalEquity = balanceEntries.length > 0
-    ? balanceEntries.reduce((s, b) => s + b.value, 0)
-    : holdings.reduce((s, h) => s + Number(h.market_value ?? 0), 0)
-  const totalCash = balanceEntries.reduce((s, b) => s + b.cash_available, 0)
+  // Derived metrics
+  const totalEquityValue = holdings.reduce((s, h) => s + Number(h.market_value ?? 0), 0)
+  const totalCashInEquityAccts = Array.from(latestBalanceByAccount.values()).reduce((s, b) => s + b.cash_available, 0)
+  const totalCashAccounts = cashAccounts.reduce((s, a) => s + a.value, 0)
+  const totalCash = totalCashInEquityAccts + totalCashAccounts
+  const totalNetWorth = totalEquityValue + totalCash
   const totalUnrealizedPL = holdings.reduce((s, h) => {
     const mv = Number(h.market_value ?? 0)
     const cb = Number(h.cost_basis ?? 0)
@@ -228,9 +253,9 @@ export default async function HomePage() {
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
             {[
-              { label: "Total Equity", value: fmt$(totalEquity), sub: "Portfolio value", tone: "text-slate-900" },
-              { label: "Total Cash", value: fmt$(totalCash), sub: "Available capital", tone: "text-emerald-700" },
-              { label: "Buying Power", value: fmt$(Math.max(0, totalCash - 20000)), sub: "$20K floor maintained", tone: "text-sky-700" },
+              { label: "Net Worth", value: fmt$(totalNetWorth), sub: "Equity + all cash", tone: "text-slate-900" },
+              { label: "Total Equity", value: fmt$(totalEquityValue), sub: "Invested positions", tone: "text-sky-700" },
+              { label: "Total Cash", value: fmt$(totalCash), sub: "Brokerage + savings", tone: "text-emerald-700" },
               { label: "Unrealized P/L", value: fmt$(totalUnrealizedPL), sub: fmtPct(unrealizedPct), tone: totalUnrealizedPL >= 0 ? "text-emerald-700" : "text-rose-600" },
               { label: "Realized P/L", value: "—", sub: "YTD — not tracked yet", tone: "text-slate-500" },
               { label: "Risk Posture", value: riskLabel, sub: `${holdings.filter(h => h.status !== "green").length} positions flagged`, tone: riskPosture === "GREEN" ? "text-emerald-700" : riskPosture === "AMBER" ? "text-amber-700" : "text-rose-600" },
@@ -310,7 +335,7 @@ export default async function HomePage() {
                   </div>
                 )
               })}
-              {/* Totals row */}
+              {/* Equity totals row */}
               {(() => {
                 const totalMV = holdings.reduce((s, h) => s + Number(h.market_value ?? 0), 0)
                 const totalCB = holdings.reduce((s, h) => s + Number(h.cost_basis ?? 0) * Number(h.shares ?? 0), 0)
@@ -321,7 +346,7 @@ export default async function HomePage() {
                   <div className="grid grid-cols-[2rem_1fr_1fr_1fr_1fr_1fr_1fr_5rem] gap-3 border-t-2 border-slate-200 bg-slate-50 px-4 py-3.5 text-sm">
                     <div />
                     <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">Total · {holdings.length} positions</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">Total Equity · {holdings.length} positions</p>
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-slate-900">{fmt$(totalMV)}</p>
@@ -342,6 +367,49 @@ export default async function HomePage() {
                   </div>
                 )
               })()}
+              {/* Cash & savings accounts */}
+              {cashAccounts.length > 0 && (
+                <>
+                  <div className="grid grid-cols-[2rem_1fr_1fr_1fr_1fr_1fr_1fr_5rem] gap-3 border-t border-slate-100 bg-slate-50/40 px-4 py-2">
+                    <div />
+                    <div className="col-span-7">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-300">Cash &amp; Savings</p>
+                    </div>
+                  </div>
+                  {cashAccounts.map((acct) => (
+                    <div key={acct.id} className="grid grid-cols-[2rem_1fr_1fr_1fr_1fr_1fr_1fr_5rem] gap-3 border-b border-slate-50 bg-slate-50/40 px-4 py-3 text-sm last:border-b-0">
+                      <div className="flex items-center">
+                        <span className="h-2 w-2 rounded-full bg-sky-300" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-slate-700">{acct.name}</p>
+                        <p className="text-[11px] text-slate-400">{acct.institution ?? acct.type}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium text-slate-700">{fmt$(acct.value)}</p>
+                      </div>
+                      <div className="text-right"><p className="text-slate-400">—</p></div>
+                      <div className="text-right"><p className="text-slate-400">—</p></div>
+                      <div className="text-right"><p className="text-slate-400">—</p></div>
+                      <div className="text-right"><p className="text-slate-400">—</p></div>
+                      <div className="flex items-center justify-center">
+                        <span className="inline-flex rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] text-sky-600 ring-1 ring-sky-200">Cash</span>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+              {/* Net Worth total */}
+              <div className="grid grid-cols-[2rem_1fr_1fr_1fr_1fr_1fr_1fr_5rem] gap-3 border-t-2 border-slate-300 bg-slate-100 px-4 py-4 text-sm">
+                <div />
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">Net Worth</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-base font-bold text-slate-900">{fmt$(totalNetWorth)}</p>
+                </div>
+                <div className="col-span-5" />
+              </div>
             </div>
           ) : (
             <div className="mt-8 rounded-xl border border-dashed border-slate-200 py-12 text-center">
