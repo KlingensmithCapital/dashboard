@@ -6,6 +6,10 @@ import { SyncPricesButton } from "@/app/components/SyncPricesButton"
 import { SyncSchwabButton } from "@/app/components/SyncSchwabButton"
 import { TickerTape } from "@/app/components/TickerTape"
 import { AutoSync } from "@/app/components/AutoSync"
+import { StatusToggle } from "@/app/components/StatusToggle"
+import { AddThesisButton, EditThesisButton } from "@/app/components/ThesisPanel"
+import { AddIdeaForm, IdeaActionButtons } from "@/app/components/AddIdeaForm"
+import { AddCashAccountModal } from "@/app/components/AddCashAccountModal"
 
 type Status = "GREEN" | "AMBER" | "RED"
 
@@ -114,13 +118,13 @@ export default async function HomePage() {
       .limit(6),
     supabase
       .from("ideas")
-      .select("name, ticker, note, score, status, created_at")
+      .select("id, name, ticker, note, score, status, created_at")
       .in("status", ["new", "watch", "promote"])
       .order("score", { ascending: false })
       .limit(5),
     supabase
       .from("theses")
-      .select("ticker, title, body, kill_criteria, conviction, status, updated_at")
+      .select("id, ticker, title, body, kill_criteria, conviction, status, updated_at")
       .eq("status", "active")
       .order("updated_at", { ascending: false })
       .limit(4),
@@ -227,6 +231,7 @@ export default async function HomePage() {
       : i.status === "promote" ? "ready"
       : "pending"
     return {
+      id: i.id as string,
       name: i.name,
       ticker: i.ticker,
       conviction,
@@ -236,7 +241,7 @@ export default async function HomePage() {
       age: ageDays !== null ? `${ageDays}d` : "—",
       lifecycle,
     }
-  }) : SEED_IDEAS.map(i => ({ ...i, lifecycle: "pending" as string }))
+  }) : SEED_IDEAS.map(i => ({ ...i, id: null as string | null, lifecycle: "pending" as string }))
 
   const catalysts = dbCatalysts.length ? dbCatalysts.map(c => ({
     ticker: c.ticker ?? "MACRO",
@@ -246,16 +251,19 @@ export default async function HomePage() {
   })) : SEED_CATALYSTS
 
   const theses = dbTheses.length ? dbTheses.map(t => ({
+    id: t.id as string,
     ticker: t.ticker,
     title: t.title,
     body: t.body,
+    kill_criteria: t.kill_criteria ?? null,
     mustRemainTrue: t.kill_criteria ?? "—",
+    conviction: t.conviction ?? 0,
     confidence: t.conviction ?? 0,
     reviewOverdue: t.updated_at
       ? (Date.now() - new Date(t.updated_at).getTime()) > 30 * 86400000
       : true,
     lastReviewed: t.updated_at ? relativeTime(t.updated_at) : null,
-  })) : SEED_THESES.map(t => ({ ...t, reviewOverdue: false, lastReviewed: null as string | null }))
+  })) : SEED_THESES.map(t => ({ ...t, id: null as string | null, kill_criteria: null as string | null, conviction: t.confidence, reviewOverdue: false, lastReviewed: null as string | null }))
 
   return (
     <main className="min-h-screen bg-[#f5f6f8] text-slate-900">
@@ -387,9 +395,7 @@ export default async function HomePage() {
                       {isNearLimit && <p className="text-[10px] text-amber-400">Near limit</p>}
                     </div>
                     <div className="flex items-center justify-center">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] ring-1 ${statusBadge(status)}`}>
-                        {status}
-                      </span>
+                      <StatusToggle id={h.id} status={h.status ?? "green"} />
                     </div>
                   </div>
                 )
@@ -461,8 +467,9 @@ export default async function HomePage() {
               {/* Net Worth total */}
               <div className="grid grid-cols-[2rem_1fr_1fr_1fr_1fr_1fr_1fr_5rem] gap-3 border-t-2 border-slate-300 bg-slate-100 px-4 py-4 text-sm">
                 <div />
-                <div>
+                <div className="flex items-center gap-3">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-500">Net Worth</p>
+                  <AddCashAccountModal />
                 </div>
                 <div className="text-right">
                   <p className="text-base font-bold text-slate-900">{fmt$(totalNetWorth)}</p>
@@ -532,8 +539,10 @@ export default async function HomePage() {
                       <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-medium">{idea.nextAction}</span>
                     </div>
                   </div>
+                  {idea.id && <IdeaActionButtons id={idea.id} status={idea.status} />}
                 </div>
               ))}
+              <AddIdeaForm />
             </div>
           </section>
 
@@ -618,6 +627,7 @@ export default async function HomePage() {
               <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Thesis Memory</p>
               <h2 className="mt-0.5 text-xl font-semibold tracking-tight text-slate-900">Why each position is owned · what must remain true</h2>
             </div>
+            <AddThesisButton />
           </div>
           <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {theses.map((t, i) => (
@@ -632,11 +642,16 @@ export default async function HomePage() {
                     </div>
                     <p className="mt-0.5 font-semibold text-slate-900">{t.title}</p>
                   </div>
-                  {t.confidence > 0 && (
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${convictionColor(t.confidence * 10)}`}>
-                      {t.confidence}/10
-                    </span>
-                  )}
+                  <div className="flex shrink-0 items-center gap-2">
+                    {t.confidence > 0 && (
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${convictionColor(t.confidence * 10)}`}>
+                        {t.confidence}/10
+                      </span>
+                    )}
+                    {t.id && (
+                      <EditThesisButton thesis={{ id: t.id, ticker: t.ticker ?? "", title: t.title, body: t.body ?? "", kill_criteria: t.kill_criteria, conviction: t.conviction }} />
+                    )}
+                  </div>
                 </div>
                 <p className="mt-2 text-sm leading-6 text-slate-600">{t.body}</p>
                 {t.mustRemainTrue && t.mustRemainTrue !== "—" && (

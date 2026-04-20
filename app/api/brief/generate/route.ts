@@ -46,25 +46,22 @@ IDEA PIPELINE:
 ${ideas.length ? ideas.map(i => `- ${i.name}${i.ticker ? ` (${i.ticker})` : ""}: score ${i.score}, status ${i.status}. ${i.note ?? ""}`).join("\n") : "None"}
 `.trim()
 
-  const prompt = `You are the Morning Brief Agent for Klingensmith Capital, a personal portfolio operating system. Generate a concise, institutional-quality pre-market brief.
+  const userPrompt = `Portfolio context:\n${context}\n\nGenerate the morning brief JSON now.`
 
-Portfolio context:
-${context}
+  const systemPrompt = `You are the Morning Brief Agent for Klingensmith Capital — a personal portfolio operating system for a solo PM. Generate a concise, institutional-quality pre-market brief. Be direct, opinionated, and PM-grade. No fluff. Every sentence earns its place.
 
-Return valid JSON matching this exact schema:
+Respond ONLY with valid JSON matching this exact schema — no markdown, no code fences, no explanation, just the JSON object:
 {
-  "market_summary": "2-3 sentences: macro tape setup, what's driving the market today, rates and risk environment. Be specific about what matters for THIS portfolio.",
-  "portfolio_notes": "2-3 sentences: what held names need attention today, any thesis drift or pressure points, concentration commentary.",
+  "market_summary": "2-3 sentences: macro tape setup, what is driving the market today, rates and risk environment. Be specific about what matters for THIS portfolio.",
+  "portfolio_notes": "2-3 sentences: which held names need attention today, any thesis drift or pressure points, concentration commentary.",
   "flight_plan": ["action 1", "action 2", "action 3", "action 4"],
   "market_context": {
-    "leadership": "1 sentence on who/what is leading",
-    "rates": "1 sentence on rate environment and impact",
-    "risk_posture": "1 sentence on recommended posture"
+    "leadership": "1 sentence on who or what is leading",
+    "rates": "1 sentence on rate environment and impact on portfolio",
+    "risk_posture": "1 sentence on recommended posture today"
   },
   "watchpoints": ["TICKER_OR_THEME_1", "TICKER_OR_THEME_2", "TICKER_OR_THEME_3"]
-}
-
-Be direct, opinionated, and PM-grade. No fluff. Every sentence must earn its place.`
+}`
 
   let briefData: {
     market_summary: string
@@ -78,13 +75,13 @@ Be direct, opinionated, and PM-grade. No fluff. Every sentence must earn its pla
     const message = await anthropic.messages.create({
       model: "claude-sonnet-4-6",
       max_tokens: 1024,
-      messages: [{ role: "user", content: prompt }],
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
     })
 
-    const text = message.content[0].type === "text" ? message.content[0].text : ""
-    const jsonMatch = text.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) throw new Error("No JSON in response")
-    briefData = JSON.parse(jsonMatch[0])
+    const text = message.content[0].type === "text" ? message.content[0].text.trim() : ""
+    if (!text) throw new Error("Empty response from Claude")
+    briefData = JSON.parse(text)
   } catch (err) {
     await admin.from("agent_runs").insert({
       user_id: user.id,
