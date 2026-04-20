@@ -78,7 +78,7 @@ export default async function HomePage() {
   const [holdingsRes, balanceRes, accountsRes, briefRes, catalystsRes, ideasRes, thesesRes] = await Promise.all([
     supabase
       .from("holdings")
-      .select("id, ticker, theme, weight_pct, market_value, cost_basis, shares, pnl_pct, status, last_synced, accounts(name)")
+      .select("id, account_id, ticker, theme, weight_pct, market_value, cost_basis, shares, pnl_pct, status, last_synced, accounts(name)")
       .eq("is_active", true)
       .order("market_value", { ascending: false }),
     supabase
@@ -131,11 +131,8 @@ export default async function HomePage() {
     }
   }
 
-  // Accounts that have active holdings = equity accounts
-  const equityAccountIds = new Set(holdings.map(h => {
-    const acct = Array.isArray(h.accounts) ? h.accounts[0] : (h.accounts as { name: string } | null)
-    return acct ? allAccounts.find(a => a.name === (acct as { name: string }).name)?.id : undefined
-  }).filter(Boolean))
+  // Accounts that have active holdings = equity accounts (use account_id directly)
+  const equityAccountIds = new Set(holdings.map(h => h.account_id).filter(Boolean))
 
   // Cash-only accounts = have a balance but no active equity holdings
   const cashAccounts = allAccounts
@@ -156,10 +153,11 @@ export default async function HomePage() {
 
   // Derived metrics
   const totalEquityValue = holdings.reduce((s, h) => s + Number(h.market_value ?? 0), 0)
-  const totalCashInEquityAccts = Array.from(latestBalanceByAccount.values()).reduce((s, b) => s + b.cash_available, 0)
   const totalCashAccounts = cashAccounts.reduce((s, a) => s + a.value, 0)
-  const totalCash = totalCashInEquityAccts + totalCashAccounts
-  const totalNetWorth = totalEquityValue + totalCash
+  const totalCashInBrokerageAccts = Array.from(latestBalanceByAccount.values()).reduce((s, b) => s + b.cash_available, 0)
+  const totalCash = totalCashInBrokerageAccts + totalCashAccounts
+  // Net worth = sum of all account liquidation values (equity accounts include their internal cash)
+  const totalNetWorth = Array.from(latestBalanceByAccount.values()).reduce((s, b) => s + b.value, 0)
   const totalUnrealizedPL = holdings.reduce((s, h) => {
     const mv = Number(h.market_value ?? 0)
     const cb = Number(h.cost_basis ?? 0)
@@ -346,7 +344,7 @@ export default async function HomePage() {
                   <div className="grid grid-cols-[2rem_1fr_1fr_1fr_1fr_1fr_1fr_5rem] gap-3 border-t-2 border-slate-200 bg-slate-50 px-4 py-3.5 text-sm">
                     <div />
                     <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">Total Equity · {holdings.length} positions</p>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">Total Equity</p>
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-slate-900">{fmt$(totalMV)}</p>
