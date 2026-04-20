@@ -133,8 +133,8 @@ export default async function HomePage() {
 
   // Accounts that have active holdings = equity accounts
   const equityAccountIds = new Set(holdings.map(h => {
-    const acct = h.accounts as { name: string } | null
-    return acct ? allAccounts.find(a => a.name === acct.name)?.id : undefined
+    const acct = Array.isArray(h.accounts) ? h.accounts[0] : (h.accounts as { name: string } | null)
+    return acct ? allAccounts.find(a => a.name === (acct as { name: string }).name)?.id : undefined
   }).filter(Boolean))
 
   // Cash-only accounts = have a balance but no active equity holdings
