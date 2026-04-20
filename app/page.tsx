@@ -22,13 +22,24 @@ function statusBadge(status: Status) {
 }
 
 function fmt$(n: number) {
+  if (!isFinite(n)) return "—"
   if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`
   if (Math.abs(n) >= 1_000) return `$${n.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
   return `$${n.toFixed(2)}`
 }
 
 function fmtPct(n: number) {
+  if (!isFinite(n)) return "—"
   return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`
+}
+
+function relativeTime(iso: string): string {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
+  if (mins < 1) return "just now"
+  if (mins < 60) return `${mins}m ago`
+  const hrs = Math.floor(mins / 60)
+  if (hrs < 24) return `${hrs}h ago`
+  return `${Math.floor(hrs / 24)}d ago`
 }
 
 // Placeholder seed data — replaced when DB has real records
@@ -178,15 +189,54 @@ export default async function HomePage() {
 
   const riskLabel = { GREEN: "Constructive", AMBER: "Cautious", RED: "Elevated" }[riskPosture]
 
-  const ideas = dbIdeas.length ? dbIdeas.map(i => ({
-    name: i.name,
-    ticker: i.ticker,
-    conviction: i.score ?? 0,
-    note: i.note ?? "",
-    nextAction: i.status === "promote" ? "Promote" : i.status === "watch" ? "Watch" : "Hold",
-    status: i.status,
-    age: i.created_at ? `${Math.floor((Date.now() - new Date(i.created_at).getTime()) / 86400000)}d` : "—",
-  })) : SEED_IDEAS
+  // Concentration analysis
+  const concentrationBreaches = holdings
+    .map(h => ({ ticker: h.ticker, weight: Number(h.weight_pct ?? 0) }))
+    .filter(h => h.weight >= 15)
+    .sort((a, b) => b.weight - a.weight)
+
+  const topPosition = holdings.length > 0
+    ? { ticker: holdings[0].ticker, weight: Number(holdings[0].weight_pct ?? 0) }
+    : null
+
+  // Deployable capital (above the $20K cash floor)
+  const deployableCapital = Math.max(0, totalCash - 20000)
+
+  // Data freshness
+  const dataAgeMinutes = lastSynced
+    ? Math.floor((Date.now() - new Date(lastSynced).getTime()) / 60000)
+    : null
+
+  // Stale theses: not updated in >30 days
+  const staleThesesCount = dbTheses.filter(t => {
+    if (!t.updated_at) return true
+    return (Date.now() - new Date(t.updated_at).getTime()) > 30 * 86400000
+  }).length
+
+  // Stale ideas: >21 days old, still new/watch
+  const staleIdeasCount = dbIdeas.filter(i => {
+    if (!i.created_at) return false
+    return (Date.now() - new Date(i.created_at).getTime()) > 21 * 86400000
+  }).length
+
+  const ideas = dbIdeas.length ? dbIdeas.map(i => {
+    const ageDays = i.created_at ? Math.floor((Date.now() - new Date(i.created_at).getTime()) / 86400000) : null
+    const conviction = i.score ?? 0
+    const lifecycle = conviction >= 75 && (ageDays ?? 0) < 14 ? "hot"
+      : (ageDays ?? 0) > 21 ? "stale"
+      : i.status === "promote" ? "ready"
+      : "pending"
+    return {
+      name: i.name,
+      ticker: i.ticker,
+      conviction,
+      note: i.note ?? "",
+      nextAction: i.status === "promote" ? "Promote" : i.status === "watch" ? "Watch" : "Hold",
+      status: i.status,
+      age: ageDays !== null ? `${ageDays}d` : "—",
+      lifecycle,
+    }
+  }) : SEED_IDEAS.map(i => ({ ...i, lifecycle: "pending" as string }))
 
   const catalysts = dbCatalysts.length ? dbCatalysts.map(c => ({
     ticker: c.ticker ?? "MACRO",
@@ -200,9 +250,12 @@ export default async function HomePage() {
     title: t.title,
     body: t.body,
     mustRemainTrue: t.kill_criteria ?? "—",
-    reviewCadence: "—",
     confidence: t.conviction ?? 0,
-  })) : SEED_THESES
+    reviewOverdue: t.updated_at
+      ? (Date.now() - new Date(t.updated_at).getTime()) > 30 * 86400000
+      : true,
+    lastReviewed: t.updated_at ? relativeTime(t.updated_at) : null,
+  })) : SEED_THESES.map(t => ({ ...t, reviewOverdue: false, lastReviewed: null as string | null }))
 
   return (
     <main className="min-h-screen bg-[#f5f6f8] text-slate-900">
@@ -252,11 +305,11 @@ export default async function HomePage() {
           <div className="mt-4 grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
             {[
               { label: "Net Worth", value: fmt$(totalNetWorth), sub: "Equity + all cash", tone: "text-slate-900" },
-              { label: "Total Equity", value: fmt$(totalEquityValue), sub: "Invested positions", tone: "text-sky-700" },
+              { label: "Total Equity", value: fmt$(totalEquityValue), sub: `${holdings.length} active positions`, tone: "text-sky-700" },
               { label: "Total Cash", value: fmt$(totalCash), sub: "Brokerage + savings", tone: "text-emerald-700" },
-              { label: "Unrealized P/L", value: fmt$(totalUnrealizedPL), sub: fmtPct(unrealizedPct), tone: totalUnrealizedPL >= 0 ? "text-emerald-700" : "text-rose-600" },
-              { label: "Realized P/L", value: "—", sub: "YTD — not tracked yet", tone: "text-slate-500" },
-              { label: "Risk Posture", value: riskLabel, sub: `${holdings.filter(h => h.status !== "green").length} positions flagged`, tone: riskPosture === "GREEN" ? "text-emerald-700" : riskPosture === "AMBER" ? "text-amber-700" : "text-rose-600" },
+              { label: "Deployable", value: fmt$(deployableCapital), sub: "$20K floor reserved", tone: deployableCapital > 0 ? "text-emerald-700" : "text-amber-600" },
+              { label: "Unrealized P/L", value: fmt$(totalUnrealizedPL), sub: fmtPct(unrealizedPct) + " on cost", tone: totalUnrealizedPL >= 0 ? "text-emerald-700" : "text-rose-600" },
+              { label: "Risk Posture", value: riskLabel, sub: concentrationBreaches.length > 0 ? `${concentrationBreaches[0].ticker} ${concentrationBreaches[0].weight.toFixed(1)}% — concentrated` : "No concentration flags", tone: riskPosture === "GREEN" && concentrationBreaches.length === 0 ? "text-emerald-700" : concentrationBreaches.length > 0 ? "text-amber-600" : riskPosture === "AMBER" ? "text-amber-700" : "text-rose-600" },
             ].map((card) => (
               <div key={card.label} className="rounded-xl border border-slate-100 bg-slate-50 p-4">
                 <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">{card.label}</p>
@@ -296,6 +349,11 @@ export default async function HomePage() {
                 const totalCb = cb * shares
                 const upl = mv - totalCb
                 const uplPct = Number(h.pnl_pct ?? 0)
+                const weight = Number(h.weight_pct ?? 0)
+                // Contribution to total portfolio P/L (position dollar gain as % of total equity)
+                const portfContrib = totalEquityValue > 0 ? (upl / totalEquityValue) * 100 : 0
+                const isConcentrated = weight >= 20
+                const isNearLimit = weight >= 15 && weight < 20
                 const status = (h.status?.toUpperCase() ?? "GREEN") as Status
                 const acctName = (Array.isArray(h.accounts) ? h.accounts[0]?.name : (h.accounts as { name: string } | null)?.name) ?? "—"
 
@@ -318,12 +376,15 @@ export default async function HomePage() {
                     </div>
                     <div className="text-right">
                       <p className={`font-medium ${upl >= 0 ? "text-emerald-700" : "text-rose-600"}`}>{totalCb > 0 ? fmt$(upl) : "—"}</p>
+                      {totalCb > 0 && <p className={`text-[11px] ${portfContrib >= 0 ? "text-emerald-600" : "text-rose-500"}`}>{fmtPct(portfContrib)} portf.</p>}
                     </div>
                     <div className="text-right">
                       <p className={`font-medium ${uplPct >= 0 ? "text-emerald-700" : "text-rose-600"}`}>{fmtPct(uplPct)}</p>
                     </div>
                     <div className="text-right">
-                      <p className="font-medium text-slate-700">{Number(h.weight_pct ?? 0).toFixed(1)}%</p>
+                      <p className={`font-medium ${isConcentrated ? "text-amber-600" : "text-slate-700"}`}>{weight.toFixed(1)}%</p>
+                      {isConcentrated && <p className="text-[10px] font-medium text-amber-500">Concentrated</p>}
+                      {isNearLimit && <p className="text-[10px] text-amber-400">Near limit</p>}
                     </div>
                     <div className="flex items-center justify-center">
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] ring-1 ${statusBadge(status)}`}>
@@ -464,7 +525,12 @@ export default async function HomePage() {
                   </div>
                   <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
                     <span>{idea.age} old</span>
-                    <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-medium">{idea.nextAction}</span>
+                    <div className="flex items-center gap-1.5">
+                      {idea.lifecycle === "hot" && <span className="rounded-full bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700 ring-1 ring-emerald-200">Hot</span>}
+                      {idea.lifecycle === "stale" && <span className="rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-400 ring-1 ring-slate-200">Stale</span>}
+                      {idea.lifecycle === "ready" && <span className="rounded-full bg-sky-50 px-2 py-0.5 font-semibold text-sky-700 ring-1 ring-sky-200">Ready</span>}
+                      <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-medium">{idea.nextAction}</span>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -474,20 +540,56 @@ export default async function HomePage() {
           {/* Operations Strip */}
           <section className="panel-shell reveal-fade rounded-2xl p-6">
             <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Operations</p>
-            <h2 className="mt-0.5 text-base font-semibold tracking-tight text-slate-900">Status · actions · data</h2>
+            <h2 className="mt-0.5 text-base font-semibold tracking-tight text-slate-900">Alerts · status · actions</h2>
 
-            <div className="mt-4 space-y-2.5">
-              {[
-                { label: "Data Freshness", value: lastSynced ? new Date(lastSynced).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "Not synced", ok: !!lastSynced },
-                { label: "Cash Floor", value: totalCash >= 20000 ? "Maintained" : "Below floor", ok: totalCash >= 20000 },
-                { label: "Positions Loaded", value: `${holdings.length} active`, ok: holdings.length > 0 },
-                { label: "Morning Brief", value: brief?.generated_at ? new Date(brief.generated_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Not generated", ok: !!brief },
-              ].map((item) => (
-                <div key={item.label} className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-                  <p className="text-xs text-slate-500">{item.label}</p>
-                  <span className={`text-xs font-medium ${item.ok ? "text-emerald-700" : "text-amber-600"}`}>{item.value}</span>
+            <div className="mt-4 space-y-2">
+              {/* Data freshness */}
+              <div className={`flex items-center justify-between rounded-xl border px-4 py-3 ${dataAgeMinutes !== null && dataAgeMinutes > 60 ? "border-amber-100 bg-amber-50/60" : "border-slate-100 bg-slate-50"}`}>
+                <p className="text-xs text-slate-500">Prices</p>
+                <span className={`text-xs font-medium ${dataAgeMinutes === null ? "text-amber-600" : dataAgeMinutes > 60 ? "text-amber-600" : "text-emerald-700"}`}>
+                  {lastSynced ? relativeTime(lastSynced) : "Never synced"}
+                </span>
+              </div>
+
+              {/* Concentration alerts */}
+              {concentrationBreaches.map(b => (
+                <div key={b.ticker} className="flex items-center justify-between rounded-xl border border-amber-100 bg-amber-50/60 px-4 py-3">
+                  <p className="text-xs text-amber-700">Concentration — {b.ticker}</p>
+                  <span className="text-xs font-semibold text-amber-700">{b.weight.toFixed(1)}% of equity</span>
                 </div>
               ))}
+
+              {/* Cash floor */}
+              <div className={`flex items-center justify-between rounded-xl border px-4 py-3 ${totalCash < 20000 ? "border-rose-100 bg-rose-50/60" : "border-slate-100 bg-slate-50"}`}>
+                <p className="text-xs text-slate-500">Cash floor</p>
+                <span className={`text-xs font-medium ${totalCash >= 20000 ? "text-emerald-700" : "text-rose-600"}`}>
+                  {totalCash >= 20000 ? `${fmt$(deployableCapital)} deployable` : "Below $20K floor"}
+                </span>
+              </div>
+
+              {/* Stale theses */}
+              {staleThesesCount > 0 && (
+                <div className="flex items-center justify-between rounded-xl border border-amber-100 bg-amber-50/60 px-4 py-3">
+                  <p className="text-xs text-amber-700">Stale theses</p>
+                  <span className="text-xs font-semibold text-amber-700">{staleThesesCount} overdue review</span>
+                </div>
+              )}
+
+              {/* Stale ideas */}
+              {staleIdeasCount > 0 && (
+                <div className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                  <p className="text-xs text-slate-500">Aging ideas</p>
+                  <span className="text-xs font-medium text-slate-500">{staleIdeasCount} past 21 days</span>
+                </div>
+              )}
+
+              {/* Morning brief status */}
+              <div className={`flex items-center justify-between rounded-xl border px-4 py-3 ${!brief ? "border-amber-100 bg-amber-50/60" : "border-slate-100 bg-slate-50"}`}>
+                <p className="text-xs text-slate-500">Morning brief</p>
+                <span className={`text-xs font-medium ${brief ? "text-emerald-700" : "text-amber-600"}`}>
+                  {brief?.generated_at ? relativeTime(brief.generated_at) : "Not generated"}
+                </span>
+              </div>
             </div>
 
             <div className="mt-4 space-y-2">
@@ -519,10 +621,15 @@ export default async function HomePage() {
           </div>
           <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {theses.map((t, i) => (
-              <div key={i} className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+              <div key={i} className={`rounded-xl border bg-slate-50 p-4 ${t.reviewOverdue ? "border-amber-200" : "border-slate-100"}`}>
                 <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">{t.ticker}</span>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">{t.ticker}</span>
+                      {t.reviewOverdue && (
+                        <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.12em] text-amber-600 ring-1 ring-amber-200">Review due</span>
+                      )}
+                    </div>
                     <p className="mt-0.5 font-semibold text-slate-900">{t.title}</p>
                   </div>
                   {t.confidence > 0 && (
@@ -537,6 +644,9 @@ export default async function HomePage() {
                     <p className="text-[10px] font-medium uppercase tracking-[0.15em] text-rose-400">Must remain true</p>
                     <p className="mt-0.5 text-xs text-rose-700">{t.mustRemainTrue}</p>
                   </div>
+                )}
+                {t.lastReviewed && (
+                  <p className="mt-2 text-[10px] text-slate-400">Reviewed {t.lastReviewed}</p>
                 )}
               </div>
             ))}

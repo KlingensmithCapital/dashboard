@@ -575,23 +575,219 @@ DATA CONTEXT TO INCLUDE IN AGENT PROMPTS:
   For idea research: idea name/ticker, similar holdings in portfolio, market context
 
 ═══════════════════════════════════════════════════════════════
-SECTION 12: PRIORITY ORDER FOR NEXT CODING SESSION
+SECTION 12: WHAT WAS IMPLEMENTED — 2026-04-19 SESSION 2
 ═══════════════════════════════════════════════════════════════
 
-Do in this order. Each item is self-contained.
+These items are DONE and deployed. Do not re-implement.
 
-  1.  Fix fmt$/fmtPct to guard against NaN/Infinity (5 min)
-  2.  Auth-gate or delete /api/debug/route.ts (5 min)
-  3.  Fix morning brief JSON extraction — use JSON.parse not regex (15 min)
-  4.  Add try/catch to page.tsx Promise.all — render error state if queries fail (20 min)
-  5.  Add "N min ago" relative timestamp to portfolio table header (10 min)
-  6.  Add UI to manually enter cash account balances (HYSA etc.) — Phase 1-H (45 min)
-  7.  Build Thesis CRUD form — add/edit thesis from cockpit — Phase 2-A (60 min)
-  8.  Build Position Detail Drawer — click holding to open side panel — Phase 2-B (90 min)
-  9.  Upgrade Morning Brief Agent prompt with theses + structured output — Phase 3-A (45 min)
-  10. Add portfolio concentration alerts in Operations strip — Phase 5-B (30 min)
+  ✓  fmt$/fmtPct now guard against NaN/Infinity (returns "—")
+  ✓  relativeTime() helper — converts ISO timestamps to "4m ago", "2h ago"
+  ✓  Portfolio table: P/L contribution sub-line under Unrealized P/L column
+      Shows each position's dollar gain as % of total equity portfolio
+      Formula: (position_unrealized_PL / totalEquityValue) × 100
+  ✓  Portfolio table: Concentration warning on Weight column
+      Amber "Concentrated" label at ≥20%, "Near limit" label at 15–20%
+  ✓  Executive Snapshot: Deployable Capital replaces Realized P/L placeholder
+      Deployable = totalCash − $20K floor reserve
+  ✓  Executive Snapshot: Risk Posture card now shows top concentration breach
+  ✓  Operations strip: Replaced generic status items with decision-grade alerts
+      - Prices: "4m ago" or "Stale — 2h ago" with amber highlight
+      - Concentration breach rows: one per position ≥15% weight
+      - Cash floor: shows deployable amount or "Below floor" in rose
+      - Stale theses: count of theses not reviewed in >30 days
+      - Aging ideas: count of ideas >21 days old
+      - Morning brief: relative timestamp
+  ✓  Idea Pipeline: lifecycle status pills
+      Hot = conviction ≥75 AND age <14d
+      Ready = status="promote"
+      Stale = age >21d
+      Pending = default
+  ✓  Thesis Memory: amber border + "Review due" badge on theses not updated in 30d
+  ✓  Thesis Memory: "Reviewed N days ago" sub-text on each card
+
+═══════════════════════════════════════════════════════════════
+SECTION 13: STRATEGIC ANALYSIS — PM MEMO 2026-04-19
+═══════════════════════════════════════════════════════════════
+
+Memo identified 7 structural deficiencies. Recorded here for future phases.
+
+DEFICIENCY 1 — No attribution engine
+The app tracks P/L but not WHY performance occurred.
+What's needed:
+  - Alpha vs beta decomposition per position
+  - Contribution to return per position (IMPLEMENTED: portf. contrib % sub-line)
+  - Sector allocation impact
+  - Stock selection impact vs benchmark
+  - Timing impact (entry price vs fair value)
+  - "Unforced error" tracking (exits at loss, premature sells)
+Future table: attribution_snapshots
+  Fields: user_id, date, ticker, contribution_pct, alpha_pct, sector, benchmark_return
+
+DEFICIENCY 2 — No closed-loop learning system
+Theses stored but outcomes not tracked.
+What's needed:
+  - thesis_outcomes table: closed_at, exit_price, exit_reason, outcome (win/loss/neutral)
+  - Win rate by thesis type, by sector, by conviction band
+  - Average holding period by outcome
+  - Confidence score calibration (did 9/10 conviction positions outperform 6/10?)
+  - Postmortem workflow: when position closes, trigger structured review prompt
+Future agent: PostmortemAgent — runs on position close, fills thesis_outcomes
+
+DEFICIENCY 3 — Alerts are underspecified
+Current alerts: concentration, cash floor, stale theses/ideas.
+Still missing:
+  - Drawdown threshold alerts (position down X% from entry — different from P/L%)
+  - Catalyst deadline breaches (event passed, no action recorded)
+  - Correlation break warnings (two positions that moved together stop doing so)
+  - Thesis breach: price action implies kill criteria is being tested
+Future table: alert_rules (user_id, type, ticker, threshold, is_active)
+Future process: run alert evaluation on every price sync
+
+DEFICIENCY 4 — No tax optimization engine
+Major gap, especially for CPA-led workflow.
+What's needed:
+  - Tax lot tracking per position (FIFO, LIFO, specific identification)
+  - Wash sale detection (same ticker bought within 30d of harvested loss)
+  - Tax-loss harvest candidates: positions with unrealized loss + low conviction
+  - Replacement idea suggestions after harvest (avoid wash sale)
+  - Year-end planning summary: projected realized gains, harvest opportunities
+Future tables:
+  tax_lots (user_id, account_id, ticker, acquired_date, cost_per_share, shares, lot_id)
+  tax_events (user_id, lot_id, sold_date, proceeds, gain_loss, is_wash_sale)
+Note: Schwab API does not provide tax lot data directly. Must be manually entered
+or imported from Schwab's gain/loss CSV export.
+
+DEFICIENCY 5 — No portfolio construction framework
+Current: holdings exist without explicit sizing rules.
+What's needed:
+  - Target allocation bands per position (min%, target%, max%)
+  - Sector caps (e.g., max 40% technology)
+  - Rebalancing thresholds (drift >5% from target = flag)
+  - Risk budget: % of portfolio in high-conviction vs speculative positions
+Future table: allocation_rules (user_id, ticker_or_sector, target_pct, min_pct, max_pct)
+Future display: drift column in portfolio table (actual weight vs target)
+
+DEFICIENCY 6 — Idea pipeline lacks full decision structure
+Current: ideas have name, score, status, age, lifecycle pill.
+Still missing:
+  - suggested_size (% of portfolio the PM intends to allocate if promoted)
+  - deadline (date by which decision must be made)
+  - linked_thesis_id (if promoted, which thesis does it create?)
+  - postmortem linkage (if idea was archived, why?)
+DB columns to add: ALTER TABLE ideas ADD COLUMN suggested_size numeric;
+                   ALTER TABLE ideas ADD COLUMN deadline date;
+                   ALTER TABLE ideas ADD COLUMN linked_thesis_id uuid;
+
+DEFICIENCY 7 — Revenue model not yet defined
+Product is currently internal-only. Architecture should leave room for:
+  1. Advisor dashboard — white-label for RIAs (multi-user with read-only sharing)
+  2. Portfolio audit reports — one-time PDF/export of full book review
+  3. Thesis intelligence feed — structured thesis outputs to subscribers
+  4. API/data product — expose signals, attribution, analytics as paid feed
+  5. Premium subscription — advanced tax, risk, attribution tools for HNW users
+Architecture requirement: all tables already have user_id — multi-tenancy is feasible.
+Next step for monetization: add a subscriptions table and gate premium features.
+
+═══════════════════════════════════════════════════════════════
+SECTION 14: PRIORITY ORDER FOR NEXT CODING SESSION
+═══════════════════════════════════════════════════════════════
+
+Items are ordered by value × feasibility. Each is self-contained.
+
+HIGH PRIORITY — do these next
+
+  1.  Auth-gate or delete /api/debug/route.ts (5 min)
+      File: app/api/debug/route.ts — no auth check, leaks user data
+
+  2.  Fix morning brief JSON extraction (15 min)
+      File: app/api/brief/generate/route.ts
+      Replace regex JSON extraction with: JSON.parse(response.content[0].text)
+      System prompt must say: "Respond only with valid JSON. No markdown or explanation."
+
+  3.  Add try/catch to page.tsx Promise.all (20 min)
+      Wrap the 7-query block in try/catch. Render a plain error banner if it throws.
+      Currently: a single Supabase error silently breaks the whole page.
+
+  4.  Add UI to manually enter cash account balances (45 min)
+      File: new component app/components/AddCashAccountModal.tsx
+      Form fields: institution name, account type (savings/money market/etc.), balance
+      Action: INSERT into accounts + balances tables
+      Surface: button in the portfolio section footer or Operations strip
+
+  5.  Build Thesis CRUD (60 min)
+      File: new page app/theses/page.tsx or inline drawer
+      Form: ticker, title, body, kill_criteria, conviction (1-10 slider)
+      Actions: server action createThesis(), updateThesis(), archiveThesis()
+      Surface: "Add thesis" button in Thesis Memory section header
+
+  6.  Build Position Detail Drawer (90 min)
+      File: new component app/components/PositionDrawer.tsx
+      Trigger: click any row in the portfolio table
+      Content: full P/L breakdown, linked thesis card, linked catalyst events,
+               notes/status editor, thesis conviction slider
+      Implementation: fixed right panel, state managed in a client wrapper component
+
+MEDIUM PRIORITY — next sprint
+
+  7.  Upgrade Morning Brief Agent prompt (45 min)
+      File: app/api/brief/generate/route.ts
+      Add to context: all active theses + kill_criteria
+      Add to output schema: thesis_drift[] array
+        [{ticker, concern, suggested_action, urgency}]
+      Surface thesis_drift separately in Thesis Memory zone (amber callout)
+
+  8.  Add allocation_rules table and drift column (60 min)
+      SQL: CREATE TABLE allocation_rules (user_id uuid, ticker text, target_pct numeric,
+           min_pct numeric, max_pct numeric, PRIMARY KEY (user_id, ticker))
+      Page: add "Drift" column to portfolio table = actual_weight - target_pct
+      Color: green if within ±2%, amber if ±2-5%, red if >±5%
+
+  9.  Add ideas.suggested_size and ideas.deadline columns (30 min)
+      SQL: ALTER TABLE ideas ADD COLUMN suggested_size numeric;
+           ALTER TABLE ideas ADD COLUMN deadline date;
+      Display: show suggested_size in idea card, show deadline as "due in Xd"
+      Alert: if deadline is within 3 days and status is still "new", surface in Operations
+
+  10. Thesis Review Agent (45 min)
+      File: new route app/api/agents/thesis-review/route.ts
+      Input: all active theses + holdings performance since thesis created_at
+      Prompt: "For each thesis, evaluate: is the kill criteria at risk based on P/L?
+               Has conviction drifted? What is the recommended action?"
+      Output: [{ticker, concern, action, new_conviction_suggestion}]
+      Writes: thesis_changes rows with changed_by='agent'
+      Surface: "Run Thesis Review" button in Thesis Memory section header
+
+FUTURE PHASES
+
+  Phase 4A: Performance attribution engine
+    - benchmark_prices table (store S&P 500 daily prices)
+    - compute alpha = position_return - (beta × benchmark_return)
+    - monthly attribution dashboard
+
+  Phase 4B: Tax lot tracking
+    - tax_lots table (see Section 13 — Deficiency 4)
+    - import from Schwab CSV or manual entry
+    - harvest scoring algorithm
+    - wash sale detection
+
+  Phase 4C: Postmortem / closed-loop learning
+    - detect when holdings flip to is_active=false
+    - trigger PostmortemAgent: classify exit as planned/forced/error
+    - write to thesis_outcomes
+    - build win-rate dashboard by thesis type
+
+  Phase 5A: Portfolio construction rules
+    - allocation_rules table
+    - drift alerts
+    - rebalancing suggestions
+
+  Phase 5B: Revenue infrastructure
+    - subscriptions table
+    - feature flags per subscription tier
+    - export to PDF (portfolio snapshot, thesis book)
+    - advisor read-only sharing
 
 ═══════════════════════════════════════════════════════════════
 END OF ROADMAP — Klingensmith Capital PM Cockpit
-Generated: 2026-04-19 | Author: Claude Sonnet 4.6
+Last updated: 2026-04-19 | Author: Claude Sonnet 4.6
 ═══════════════════════════════════════════════════════════════
