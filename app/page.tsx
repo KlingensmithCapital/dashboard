@@ -388,7 +388,7 @@ export default async function HomePage() {
                   {brief.market_summary}
                 </div>
               )}
-              {brief?.watchpoints?.length > 0 && (
+              {brief != null && brief?.watchpoints?.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {(brief.watchpoints as string[]).map((w) => (
                     <span key={w} className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-amber-200">{w}</span>
