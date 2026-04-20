@@ -1,0 +1,597 @@
+PM COCKPIT — INFRASTRUCTURE AUDIT & DEVELOPMENT ROADMAP
+Klingensmith Capital · Generated 2026-04-19
+For AI agents and developers implementing future phases.
+
+═══════════════════════════════════════════════════════════════
+SECTION 1: WHAT THE PRODUCT IS
+═══════════════════════════════════════════════════════════════
+
+The PM Cockpit is a personal capital operating system for a solo portfolio manager.
+It is NOT a retail brokerage app. It is a decision cockpit. Every feature exists to
+answer one of three questions:
+
+  1. How much capital do I have and where is it?
+  2. What is happening in the portfolio right now?
+  3. What deserves my attention today and why?
+
+The primary user is the PM — one person — who manages a multi-account equity book
+across Schwab brokerage accounts (taxable, Roth IRA, traditional IRA, HSA) plus
+external savings (HYSA, etc.).
+
+The design philosophy is: calm, premium, decisive. No gamification. No noise.
+Every pixel earns its place by helping the PM act faster or safer.
+
+═══════════════════════════════════════════════════════════════
+SECTION 2: CURRENT TECH STACK
+═══════════════════════════════════════════════════════════════
+
+Framework:     Next.js 16.2.3 (App Router, Turbopack)
+Runtime:       React 19.2.4
+Database:      Supabase (PostgreSQL + RLS)
+Auth:          Supabase Auth (email/password) + Schwab OAuth 2.0
+AI:            Anthropic Claude API (@anthropic-ai/sdk ^0.90.0)
+Market Data:   yahoo-finance2 ^3.14.0 (class-based — must instantiate with `new YahooFinance()`)
+Styling:       Tailwind CSS v4 (PostCSS plugin mode)
+Hosting:       Vercel (dashboard-jade-ten-23.vercel.app)
+Monitoring:    @vercel/speed-insights
+
+IMPORTANT NEXT.JS 16 NOTES FOR AGENTS:
+- Page/layout searchParams is a Promise — must `await searchParams`
+- Route handler request.nextUrl.searchParams IS synchronous (do not await)
+- proxy.ts replaces middleware.ts — exports a proxy() function
+- Yahoo Finance: `import YahooFinance from "yahoo-finance2"` then `const yf = new YahooFinance()`
+
+═══════════════════════════════════════════════════════════════
+SECTION 3: DATABASE SCHEMA (SUPABASE)
+═══════════════════════════════════════════════════════════════
+
+All tables have user_id (uuid, FK to auth.users) and RLS policies enforcing
+"owner only" (auth.uid() = user_id). All tables have cascade delete on user removal.
+
+TABLE: accounts
+  id uuid PK
+  user_id uuid FK
+  name text                  -- "Roth IRA (4282)", "Taxable (5092)", "HYSA"
+  institution text           -- "Schwab", "Ally", etc.
+  type text                  -- "roth_ira", "taxable", "hsa", "traditional_ira", "savings"
+  external_id text           -- Schwab account number (used to key sync, prevent duplicates)
+  created_at timestamptz
+
+TABLE: holdings
+  id uuid PK
+  user_id uuid FK
+  account_id uuid FK -> accounts.id
+  ticker text
+  name text                  -- Security description
+  shares numeric
+  cost_basis numeric          -- Per-share cost basis
+  current_price numeric
+  market_value numeric        -- shares * current_price
+  weight_pct numeric          -- market_value / total_equity * 100
+  pnl_pct numeric             -- (current_price - cost_basis) / cost_basis * 100
+  status text                -- "green", "amber", "red"
+  theme text                 -- Sector/thesis tag
+  is_active boolean          -- False when position was synced away (sold)
+  last_synced timestamptz
+  created_at timestamptz
+
+TABLE: balances
+  id uuid PK
+  user_id uuid FK
+  account_id uuid FK -> accounts.id
+  date date
+  value numeric               -- Total account liquidation value (equity + internal cash)
+  cash_available numeric      -- Cash/sweep balance within the account
+  UNIQUE (user_id, account_id, date)
+
+TABLE: transactions
+  id uuid PK
+  user_id uuid FK
+  account_id uuid FK
+  ticker text
+  type text                   -- "buy", "sell", "dividend", "contribution", "withdrawal"
+  shares numeric
+  price numeric
+  total numeric
+  date date
+  notes text
+
+TABLE: theses
+  id uuid PK
+  user_id uuid FK
+  ticker text
+  title text
+  body text                   -- Why this position is owned
+  kill_criteria text          -- What must remain true or position is exited
+  status text                 -- "active", "archived", "watching"
+  conviction integer          -- 1-10
+  updated_at timestamptz
+
+TABLE: thesis_changes
+  id uuid PK
+  user_id uuid FK
+  thesis_id uuid FK -> theses.id
+  note text
+  changed_by text             -- "pm" or "agent"
+  created_at timestamptz
+
+TABLE: catalyst_events
+  id uuid PK
+  user_id uuid FK
+  ticker text
+  title text
+  type text                   -- "earnings", "macro", "regulatory", "position_review"
+  urgency text                -- "today", "high", "normal", "low"
+  due_date date
+  is_complete boolean
+  linked_holding_id uuid FK   -- Direct link to holdings (not yet used)
+  notes text
+
+TABLE: ideas
+  id uuid PK
+  user_id uuid FK
+  name text                   -- Idea name or thesis title
+  ticker text
+  note text                   -- Thesis summary
+  score integer               -- Conviction 0-100
+  status text                 -- "new", "watch", "promote", "archive"
+  source text                 -- "pm", "agent"
+  created_at timestamptz
+
+TABLE: morning_briefs
+  id uuid PK
+  user_id uuid FK
+  date date
+  market_summary text         -- Short narrative
+  portfolio_notes text        -- Position-specific observations
+  flight_plan jsonb           -- Structured action items [{action, ticker, priority}]
+  market_context jsonb        -- Macro/sector notes
+  watchpoints text[]          -- Array of tickers/themes to watch
+  generated_at timestamptz
+  UNIQUE (user_id, date)
+
+TABLE: agent_runs
+  id uuid PK
+  user_id uuid FK
+  agent text                  -- "morning_brief", "thesis_review", etc.
+  status text                 -- "success", "error"
+  input jsonb
+  output jsonb
+  error text
+  duration_ms integer
+  created_at timestamptz
+
+TABLE: documents
+  id uuid PK
+  user_id uuid FK
+  name text
+  type text                   -- "statement", "research", "note"
+  storage_path text           -- Supabase Storage path
+  parsed boolean
+  parsed_at timestamptz
+
+TABLE: expenses
+  id uuid PK
+  user_id uuid FK
+  category text
+  description text
+  amount numeric
+  date date
+  source text
+  is_recurring boolean
+
+TABLE: schwab_tokens
+  user_id uuid PK FK
+  access_token text
+  refresh_token text
+  expires_at timestamptz
+
+═══════════════════════════════════════════════════════════════
+SECTION 4: FILE MAP
+═══════════════════════════════════════════════════════════════
+
+app/
+  page.tsx                    -- Main cockpit dashboard (server component, 550+ lines)
+  layout.tsx                  -- Root layout (Google Fonts: Cormorant Garamond, Manrope)
+  login/
+    page.tsx                  -- Login form (async, awaits searchParams)
+    actions.ts                -- signIn(), signOut() server actions
+  onboarding/
+    page.tsx                  -- Schwab connection page (async, awaits searchParams)
+  components/
+    SyncSchwabButton.tsx      -- Client: calls POST /api/schwab/sync
+    SyncPricesButton.tsx      -- Client: calls POST /api/prices/sync
+    GenerateBriefButton.tsx   -- Client: calls POST /api/brief/generate
+    AutoSync.tsx              -- Client: fires sync on mount if ?schwab=connected
+    TickerTape.tsx            -- Client: fetches /api/prices/quote, scrolling tape
+  api/
+    schwab/
+      sync/route.ts           -- POST: fetch Schwab positions, upsert to DB
+      connect/route.ts        -- GET: initiate Schwab OAuth redirect
+    auth/schwab/callback/     -- GET: MUST EXIST — OAuth callback (exchange code for tokens)
+    prices/
+      sync/route.ts           -- POST: update holdings prices from Yahoo Finance
+      quote/route.ts          -- GET: market index quotes for ticker tape
+    brief/
+      generate/route.ts       -- POST: Claude API → morning brief → Supabase
+    debug/route.ts            -- GET: health check (should be auth-gated or removed)
+
+utils/
+  supabase/
+    server.ts                 -- createClient(cookieStore) for server components/routes
+    client.ts                 -- createClient() for browser components
+    admin.ts                  -- createAdminClient() using SERVICE_ROLE_KEY (bypasses RLS)
+    middleware.ts             -- proxy() function for route protection
+
+proxy.ts                      -- Next.js 16 middleware file (renamed from middleware.ts)
+supabase/
+  schema.sql                  -- Full DB schema
+  schwab-tokens.sql           -- schwab_tokens table definition
+  seed.sql                    -- Initial seed data
+  dev-policy.sql              -- Development RLS bypass
+  remove-dev-policy.sql       -- Removes dev bypass
+
+═══════════════════════════════════════════════════════════════
+SECTION 5: CURRENT PAGE LAYOUT (app/page.tsx)
+═══════════════════════════════════════════════════════════════
+
+Zone 0 — Ticker Tape (TickerTape component, ^GSPC ^IXIC ^VIX ^TNX)
+
+Zone 0.5 — Nav Bar
+  Left: "Klingensmith Capital" / "Portfolio Manager Cockpit"
+  Right: [Sync Schwab] [Sync Prices] [Generate Brief] [Sign out]
+
+Zone 1 — Executive Snapshot (6 cards)
+  Net Worth        = sum of all account liquidation balances
+  Total Equity     = sum of holdings.market_value
+  Total Cash       = brokerage cash_available + cash-only account balances
+  Unrealized P/L   = Σ(market_value - cost_basis × shares) with %
+  Realized P/L     = placeholder (not tracked yet)
+  Risk Posture     = GREEN/AMBER/RED based on holdings.status
+
+Zone 2 — Consolidated Portfolio Table
+  Columns: health dot | Ticker/Account | Market Value/shares | Cost Basis/per-sh |
+           Unrealized P/L | P/L% | Weight | Status badge
+  Rows: all active holdings sorted by market_value DESC
+  Footer: Total Equity subtotal row → Cash & Savings rows → Net Worth grand total
+
+Zone 3 — Three-Column Decision Zone
+  Col 1: Catalyst Radar (urgency dot, ticker, timing, action required)
+  Col 2: Idea Pipeline (name, conviction score, note, age, next action)
+  Col 3: Operations Strip (data freshness, cash floor, positions count, morning brief)
+
+Zone 4 — Thesis Memory
+  Grid of thesis cards: ticker, title, body, confidence score, "Must remain true" box
+
+═══════════════════════════════════════════════════════════════
+SECTION 6: KNOWN BUGS & REQUIRED FIXES (do these before new features)
+═══════════════════════════════════════════════════════════════
+
+BUG-01: /api/debug is public — leaks user data
+  File: app/api/debug/route.ts
+  Fix: Add auth check at top (verify user via supabase.auth.getUser()) or delete the route.
+
+BUG-02: /api/prices/quote is unauthenticated — could be rate-abused
+  File: app/api/prices/quote/route.ts
+  Fix: Add auth check or move to a server action inside the component.
+
+BUG-03: Morning brief JSON extraction uses fragile regex
+  File: app/api/brief/generate/route.ts
+  Fix: Use Claude's JSON mode or wrap the prompt with explicit delimiters.
+  Current: Regex match on response text to extract JSON block.
+  Better: Instruct Claude to respond ONLY with JSON, or use tool_use/json mode.
+
+BUG-04: Schwab sync has no transaction safety
+  File: app/api/schwab/sync/route.ts
+  Fix: If any position upsert fails, log the error and continue but flag partial sync.
+  Better: Use a staging approach — write to temp state, then commit all at once.
+
+BUG-05: Weight calculation is inconsistent between sync and page
+  Sync calculates: weight = marketValue / totalValue (Schwab account liquidation value, includes cash)
+  Page calculates: weight = marketValue / Σ(holdings.market_value) (equity only)
+  Fix: Standardize. Recommend: weight = marketValue / Σ(holdings.market_value) (equity-only denominator).
+
+BUG-06: Portfolio table position count shown to user could include duplicates
+  If the Supabase DB cleanup SQL was not run, old accounts without external_id remain.
+  Fix: Run the cleanup SQL described in the setup notes.
+  SQL: DELETE FROM holdings WHERE account_id IN (SELECT id FROM accounts WHERE external_id IS NULL);
+       DELETE FROM accounts WHERE external_id IS NULL;
+
+BUG-07: AutoSync double-fires on React Strict Mode dev
+  File: app/components/AutoSync.tsx
+  Fix: The useRef flag already prevents double-fire in prod. No prod bug, but noisy in dev.
+
+═══════════════════════════════════════════════════════════════
+SECTION 7: DEVELOPMENT PHASES
+═══════════════════════════════════════════════════════════════
+
+PHASE 1 — STABILITY & ACCURACY (do this first, no new features)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+P1-A: Fix weight calculation consistency (BUG-05)
+P1-B: Auth-gate or remove /api/debug (BUG-01)
+P1-C: Wrap page.tsx parallel queries in try/catch; render error state if any fail
+P1-D: Add NaN guard to all numeric display helpers (fmt$, fmtPct)
+      e.g. `if (!isFinite(n)) return "—"`
+P1-E: Standardize cost basis display in portfolio table
+      Currently shows total cost basis (cb × shares). Should also show per-share.
+P1-F: Fix morning brief JSON extraction (BUG-03)
+      Use Claude system prompt: "Respond only with valid JSON matching this schema: {...}"
+P1-G: Add a "last updated" timestamp to the portfolio table header
+      Show relative time: "Synced 4 min ago" using the last_synced field.
+P1-H: Ensure HYSA and other manual cash accounts work correctly
+      If no Supabase record exists: add a UI to manually enter a cash account balance.
+      Table: accounts (type='savings'), balances (value, cash_available = value).
+      No external_id needed — these won't sync via Schwab.
+
+PHASE 2 — THESIS & DECISION TOOLS (core PM workflow)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+P2-A: Thesis CRUD UI
+      - Add/edit/archive theses from the cockpit (currently read-only display)
+      - Form fields: ticker, title, body, kill_criteria, conviction (slider 1-10)
+      - Save via server action → theses table
+      - Show "thesis age" (days since created_at)
+      - Show "last reviewed" timestamp and "overdue review" warning (>30 days)
+
+P2-B: Position Detail Drawer
+      - Click any holding row to open a right-side panel
+      - Shows: full P/L history, thesis linked to position, catalyst events for that ticker
+      - Allows: adding a thesis note, changing status (green/amber/red), linking a catalyst
+      - Implementation: shadcn/ui Sheet or custom fixed panel, no new page needed
+
+P2-C: Thesis Change Log
+      - thesis_changes table is in DB but not surfaced in UI
+      - Show timeline of changes in the position detail drawer
+      - When PM saves a thesis update: auto-insert a thesis_changes row
+      - When an agent updates thesis conviction: auto-insert with changed_by='agent'
+
+P2-D: Catalyst Radar — link to positions
+      - catalyst_events.linked_holding_id column exists but not used
+      - When creating/editing a catalyst: link it to one or more holdings
+      - In the cockpit table: show a small indicator dot on holding rows with linked catalysts
+      - In Catalyst Radar: clicking an event shows which positions are affected
+
+P2-E: Idea Pipeline CRUD
+      - Add new ideas inline from the cockpit (ticker, name, note, score)
+      - Quick-promote: "Promote to Watch" / "Archive" buttons on each idea card
+      - Show idea age and last-updated timestamp
+      - Link ideas to theses when promoted
+
+PHASE 3 — AI AGENTS (compound value over time)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+P3-A: Upgrade Morning Brief Agent
+      - Current: simple Claude call with portfolio snapshot
+      - Upgrade: structured prompt with holdings + theses + catalyst events + ideas
+      - Output schema:
+          {
+            "market_summary": "string",
+            "portfolio_notes": "string",
+            "flight_plan": [{"action": "string", "ticker": "string", "priority": "high|normal|low"}],
+            "watchpoints": ["ticker_or_theme"],
+            "thesis_drift": [{"ticker": "string", "concern": "string", "suggested_action": "string"}],
+            "idea_signals": ["string"]
+          }
+      - Surface thesis_drift separately in the Thesis Memory zone
+      - Surface flight_plan as an ordered action checklist in Operations
+
+P3-B: Thesis Review Agent
+      - Runs on demand or on schedule (weekly)
+      - Reads all active theses + linked holdings performance
+      - Evaluates: is kill_criteria at risk? Has conviction drifted based on P/L?
+      - Writes to thesis_changes with changed_by='agent'
+      - Flags in cockpit: "Agent flagged 2 theses for review" in Operations strip
+
+P3-C: Catalyst Scout Agent
+      - On demand: scans a ticker for upcoming events (earnings, guidance, regulatory)
+      - Creates catalyst_events rows with urgency + due_date
+      - Links to holdings by ticker
+      - Implementation: Claude with web search tool or a financial data API
+
+P3-D: Idea Research Agent
+      - Input: idea name + ticker
+      - Output: structured research note (thesis, risks, comparable positions, conviction score)
+      - Writes to: ideas.note + a linked document in documents table
+      - Surface: research output in Position Detail Drawer or Idea Pipeline card
+
+P3-E: Agent Run Dashboard
+      - Expose agent_runs table in a simple log view (admin panel or Operations section)
+      - Show: agent name, timestamp, status, duration, input/output summary
+      - Useful for debugging and auditing AI decisions
+
+PHASE 4 — DATA INTEGRITY & PERFORMANCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+P4-A: Realized P/L tracking
+      - Currently placeholder ("—" in dashboard)
+      - Requires transactions table to be populated
+      - When Schwab sync runs: detect positions that went from is_active=true to false
+        and create a transactions row for the close
+      - Alternatively: ingest Schwab trade history via API (separate endpoint)
+      - Calculate realized P/L YTD from transactions table
+
+P4-B: Portfolio Performance History
+      - balances table already stores daily snapshots (one per account per day)
+      - Add a time-series chart (Zone below thesis memory) showing portfolio value over time
+      - Use Recharts or a lightweight SVG approach — no heavy charting lib needed
+      - Data: SELECT date, SUM(value) FROM balances GROUP BY date ORDER BY date
+
+P4-C: Transaction History View
+      - A separate page (/transactions) showing full trade history
+      - Filterable by ticker, account, date range, type
+      - Shows: realized gains per trade, average holding period
+
+P4-D: Rate limiting on sync buttons
+      - Add 30-second cooldown on Sync Schwab and Sync Prices buttons
+      - Store last-sync timestamp in localStorage or DB
+      - Show time-until-next-sync in button label when cooling down
+
+P4-E: Auto price refresh
+      - On page load, if last_synced is >15 minutes ago: auto-trigger /api/prices/sync
+      - Show "Stale data" warning badge next to last sync time if >1 hour old
+      - Optionally: add a route handler with Next.js revalidate for prices
+
+PHASE 5 — ADVANCED COCKPIT FEATURES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+P5-A: Manual Cash Account Manager
+      - UI form to add/update cash accounts (HYSA, money market, etc.)
+      - Fields: institution name, account type, current balance
+      - Saves to accounts + balances tables
+      - No external sync — user updates manually or on a schedule prompt
+
+P5-B: Portfolio Concentration Alerts
+      - Calculate: top position weight, sector concentration, account concentration
+      - Alert thresholds (configurable): >25% single position, >50% one sector
+      - Surface in Operations strip: "NVDA is 22% of equity — near concentration limit"
+
+P5-C: Wash Sale Warning
+      - When a position status changes to is_active=false (sold): check if same ticker
+        appears in any holding added within 30 days before or after
+      - Surface warning in Operations strip
+      - No tax advice — just a flag for PM awareness
+
+P5-D: Morning Brief Scheduling
+      - Auto-generate brief at a set time (e.g., 6:30am PT on weekdays)
+      - Implementation: Vercel Cron (crons in vercel.json) → POST /api/brief/generate
+      - Show "Brief scheduled for 6:30am" in Operations strip
+
+P5-E: Document Storage & Parsing
+      - documents table exists but no UI
+      - Build: file upload component → Supabase Storage → parse text → extract signals
+      - Use cases: upload brokerage statements, research PDFs, earnings transcripts
+      - Agent: parse document, extract relevant thesis data, write to ideas or thesis_changes
+
+P5-F: Multi-user / Advisor Mode
+      - Currently single-user only (auth.uid() = user_id everywhere)
+      - Future: allow PM to share read-only view with advisors
+      - Implementation: separate read-only token or Supabase row sharing
+
+═══════════════════════════════════════════════════════════════
+SECTION 8: ENVIRONMENT VARIABLES REQUIRED
+═══════════════════════════════════════════════════════════════
+
+Set all of these in Vercel project settings (Settings → Environment Variables).
+Set for: Production + Preview.
+
+NEXT_PUBLIC_SUPABASE_URL            Supabase project URL
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY  Supabase anon key
+SUPABASE_SERVICE_ROLE_KEY           Supabase service role key (bypasses RLS — keep secret)
+ANTHROPIC_API_KEY                   Anthropic Claude API key
+SCHWAB_APP_KEY                      Schwab developer app client ID
+SCHWAB_APP_SECRET                   Schwab developer app client secret
+SCHWAB_CALLBACK_URL                 Full URL of OAuth callback: https://[domain]/auth/schwab/callback
+
+═══════════════════════════════════════════════════════════════
+SECTION 9: SUPABASE MIGRATIONS TO RUN
+═══════════════════════════════════════════════════════════════
+
+Run these in Supabase SQL editor if not already applied.
+
+-- 1. External ID on accounts (required for multi-account Schwab sync)
+ALTER TABLE accounts ADD COLUMN IF NOT EXISTS external_id text;
+CREATE UNIQUE INDEX IF NOT EXISTS accounts_user_external_idx
+  ON accounts (user_id, external_id)
+  WHERE external_id IS NOT NULL;
+
+-- 2. Linked holding on catalyst events (required for Phase 2-D)
+ALTER TABLE catalyst_events ADD COLUMN IF NOT EXISTS linked_holding_id uuid REFERENCES holdings(id);
+
+-- 3. Source field on ideas (required for agent-generated ideas)
+ALTER TABLE ideas ADD COLUMN IF NOT EXISTS source text DEFAULT 'pm';
+
+-- 4. Clean up duplicate accounts (run once after adding external_id)
+-- PREVIEW first:
+SELECT id, name, external_id FROM accounts WHERE external_id IS NULL;
+-- Then delete:
+DELETE FROM holdings WHERE account_id IN (SELECT id FROM accounts WHERE external_id IS NULL);
+DELETE FROM accounts WHERE external_id IS NULL;
+
+═══════════════════════════════════════════════════════════════
+SECTION 10: DESIGN SYSTEM RULES
+═══════════════════════════════════════════════════════════════
+
+Colors are semantic — do not use color for decoration. Use color only to signal state.
+
+  Green (emerald-*)   = positive, healthy, good signal
+  Amber (amber-*)     = caution, watch, needs attention
+  Red/Rose (rose-*)   = negative, danger, action required
+  Sky (sky-*)         = informational, cash, liquidity
+  Slate (slate-*)     = neutral, labels, secondary text
+
+Status badge classes:
+  GREEN:  bg-emerald-50 text-emerald-700 ring-emerald-200
+  AMBER:  bg-amber-50   text-amber-700   ring-amber-200
+  RED:    bg-rose-50    text-rose-700    ring-rose-200
+  CASH:   bg-sky-50     text-sky-600     ring-sky-200
+
+Typography:
+  Display/headings:   Cormorant Garamond (font-serif)
+  UI/data:            Manrope (font-sans)
+  Section labels:     11px, uppercase, tracking-[0.28em], text-slate-400
+  Metric values:      text-xl or text-base, font-semibold, tracking-tight
+
+Layout:
+  Max width: max-w-[1600px], centered, px-4 sm:px-6 lg:px-8
+  Gap between sections: gap-5
+  Panels: rounded-2xl, bg-white (or bg-slate-50 for interior cards)
+  Card borders: border border-slate-100
+
+Numeric formatting helpers in page.tsx:
+  fmt$(n)     — formats dollar amounts (M suffix for millions, comma for thousands)
+  fmtPct(n)   — formats percent with sign (+15.87% or -3.22%)
+  Always guard: if (!isFinite(n)) return "—"
+
+═══════════════════════════════════════════════════════════════
+SECTION 11: AI AGENT IMPLEMENTATION NOTES
+═══════════════════════════════════════════════════════════════
+
+ANTHROPIC SDK USAGE:
+  - SDK: @anthropic-ai/sdk (not Vercel AI SDK)
+  - Rationale: generate-and-store pattern (brief generated, stored in DB, page reads DB)
+  - Model: claude-sonnet-4-6 (check for latest model ID before each run)
+  - Do not stream — generate full response and store
+
+RECOMMENDED PROMPT PATTERN FOR AGENTS:
+  System: "You are a portfolio management assistant for a solo PM at Klingensmith Capital.
+           You respond only with valid JSON matching the schema provided.
+           Do not include markdown, code fences, or explanation — only JSON."
+  User: [Portfolio context as structured text]
+  Schema: [JSON schema for expected output]
+
+JSON EXTRACTION:
+  Do NOT use regex to extract JSON from response text.
+  Instead, parse the full response as JSON: JSON.parse(response.content[0].text)
+  If this fails: the prompt is not returning clean JSON — fix the system prompt.
+
+AGENT RUNS LOGGING:
+  Always write to agent_runs table on success and failure.
+  Fields: agent (name string), status, input (jsonb), output (jsonb), error (string), duration_ms
+
+DATA CONTEXT TO INCLUDE IN AGENT PROMPTS:
+  For morning brief: holdings (with weights), balances, catalyst_events, ideas, theses
+  For thesis review: theses (with kill_criteria), holdings P/L, thesis_changes history
+  For idea research: idea name/ticker, similar holdings in portfolio, market context
+
+═══════════════════════════════════════════════════════════════
+SECTION 12: PRIORITY ORDER FOR NEXT CODING SESSION
+═══════════════════════════════════════════════════════════════
+
+Do in this order. Each item is self-contained.
+
+  1.  Fix fmt$/fmtPct to guard against NaN/Infinity (5 min)
+  2.  Auth-gate or delete /api/debug/route.ts (5 min)
+  3.  Fix morning brief JSON extraction — use JSON.parse not regex (15 min)
+  4.  Add try/catch to page.tsx Promise.all — render error state if queries fail (20 min)
+  5.  Add "N min ago" relative timestamp to portfolio table header (10 min)
+  6.  Add UI to manually enter cash account balances (HYSA etc.) — Phase 1-H (45 min)
+  7.  Build Thesis CRUD form — add/edit thesis from cockpit — Phase 2-A (60 min)
+  8.  Build Position Detail Drawer — click holding to open side panel — Phase 2-B (90 min)
+  9.  Upgrade Morning Brief Agent prompt with theses + structured output — Phase 3-A (45 min)
+  10. Add portfolio concentration alerts in Operations strip — Phase 5-B (30 min)
+
+═══════════════════════════════════════════════════════════════
+END OF ROADMAP — Klingensmith Capital PM Cockpit
+Generated: 2026-04-19 | Author: Claude Sonnet 4.6
+═══════════════════════════════════════════════════════════════
