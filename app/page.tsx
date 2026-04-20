@@ -299,6 +299,38 @@ export default async function HomePage() {
                   </div>
                 )
               })}
+              {/* Totals row */}
+              {(() => {
+                const totalMV = holdings.reduce((s, h) => s + Number(h.market_value ?? 0), 0)
+                const totalCB = holdings.reduce((s, h) => s + Number(h.cost_basis ?? 0) * Number(h.shares ?? 0), 0)
+                const totalUPL = totalMV - totalCB
+                const totalUPLPct = totalCB > 0 ? (totalUPL / totalCB) * 100 : 0
+                const totalWeight = holdings.reduce((s, h) => s + Number(h.weight_pct ?? 0), 0)
+                return (
+                  <div className="grid grid-cols-[2rem_1fr_1fr_1fr_1fr_1fr_1fr_5rem] gap-3 border-t-2 border-slate-200 bg-slate-50 px-4 py-3.5 text-sm">
+                    <div />
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-slate-400">Total · {holdings.length} positions</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-slate-900">{fmt$(totalMV)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-slate-700">{totalCB > 0 ? fmt$(totalCB) : "—"}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-semibold ${totalUPL >= 0 ? "text-emerald-700" : "text-rose-600"}`}>{fmt$(totalUPL)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-semibold ${totalUPLPct >= 0 ? "text-emerald-700" : "text-rose-600"}`}>{fmtPct(totalUPLPct)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-slate-700">{totalWeight.toFixed(1)}%</p>
+                    </div>
+                    <div />
+                  </div>
+                )
+              })()}
             </div>
           ) : (
             <div className="mt-8 rounded-xl border border-dashed border-slate-200 py-12 text-center">
