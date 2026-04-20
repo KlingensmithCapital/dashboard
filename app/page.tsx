@@ -9,87 +9,65 @@ import { AutoSync } from "@/app/components/AutoSync"
 
 type Status = "GREEN" | "AMBER" | "RED"
 
+function statusDot(status: Status) {
+  if (status === "GREEN") return "bg-emerald-400"
+  if (status === "AMBER") return "bg-amber-400"
+  return "bg-rose-400"
+}
 
-const priorities = [
-  { label: "Portfolio", value: "Concentrated", detail: "NVDA + CEG driving the tape" },
-  { label: "Risk", value: "Controlled", detail: "Cash and thesis guardrails respected" },
-  { label: "Ops", value: "Current", detail: "Expense ingestion up to date" },
-]
-
-const briefItems = [
-  "Indices remain constructive pre-open as rates ease and AI leadership broadens.",
-  "Balance-sheet posture is healthy. The deployable cash floor remains intact with room to add.",
-  "Primary watchpoints are DKNG thesis drift, CING catalyst timing, and any reversal in long-duration beta.",
-]
-
-const flightPlan = [
-  "Review held-name overnight moves and clear the alert queue before the open.",
-  "Decide whether DKNG moves from watch to active thesis review.",
-  "Promote one idea from the queue into formal research coverage.",
-  "Confirm personal expense ingestion is current before weekly capital allocation.",
-]
-
-const positions = [
-  { ticker: "NVDA", theme: "AI Infrastructure", account: "Roth IRA", weight: "31.4%", value: "$188,400", pnl: "+18.2%", status: "GREEN" as Status },
-  { ticker: "CEG", theme: "Nuclear demand supercycle", account: "Roth IRA", weight: "12.7%", value: "$34,900", pnl: "+9.7%", status: "GREEN" as Status },
-  { ticker: "DKNG", theme: "Operating leverage + state optionality", account: "Taxable", weight: "4.1%", value: "$11,240", pnl: "-3.1%", status: "AMBER" as Status },
-  { ticker: "CING", theme: "Binary catalyst sizing discipline", account: "Taxable", weight: "2.2%", value: "$6,110", pnl: "+4.6%", status: "AMBER" as Status },
-]
-
-const allocation = [
-  { name: "AI / Semis", weight: 38, change: "+240 bps" },
-  { name: "Power & Utilities", weight: 17, change: "+60 bps" },
-  { name: "Consumer Internet", weight: 11, change: "-35 bps" },
-  { name: "Speculative Event", weight: 5, change: "Flat" },
-]
-
-const movers = [
-  { ticker: "NVDA", driver: "Leadership broadening with rates tailwind", move: "+2.4%", tone: "text-emerald-600" },
-  { ticker: "CEG", driver: "Utility / AI power narrative holding firm", move: "+1.1%", tone: "text-emerald-600" },
-  { ticker: "DKNG", driver: "Momentum cooling after operating update", move: "-1.6%", tone: "text-amber-600" },
-]
-
-const catalysts = [
-  { when: "Today", item: "Re-underwrite DKNG after recent operating update", dot: "bg-amber-400" },
-  { when: "2D", item: "Pressure-test CEG policy and regulatory sensitivity", dot: "bg-sky-400" },
-  { when: "6D", item: "Finalize CING catalyst prep and sizing memo", dot: "bg-rose-400" },
-  { when: "9D", item: "Refresh deployable-cash map for May contributions", dot: "bg-emerald-400" },
-]
-
-const ideas = [
-  { name: "Power & Grid Basket", score: 84, note: "Second-derivative AI capex beneficiaries with improving utility demand setup.", action: "Promote to research" },
-  { name: "Payments Quality Screen", score: 76, note: "Cross-border and network-quality basket with cleaner downside and compounding traits.", action: "Watch" },
-  { name: "Small-Cap Special Sit", score: 63, note: "Variant perception could be real, but the catalyst map still needs proof.", action: "Hold" },
-]
-
-const memory = [
-  { title: "Thesis Drift", body: "DKNG is still a category winner, but the sizing should reflect slower near-term momentum and less obvious upside skew." },
-  { title: "Kill Criteria", body: "Every position needs a clear non-price invalidation condition so exits are driven by process rather than emotion." },
-  { title: "PM Preference", body: "Roth capital should stay concentrated in long-duration compounders and structural winners with real runway." },
-]
-
-const opsRail = [
-  { label: "Statement Ingestion", value: "Current", sub: "Latest card review absorbed" },
-  { label: "Expense Runway", value: "Healthy", sub: "Savings rate still supports deployment" },
-  { label: "Document Queue", value: "2 Pending", sub: "One report, one statement" },
-]
-
-const agents = [
-  { name: "Morning Brief Agent", role: "Builds the pre-market setup, PM agenda, and catalyst framing." },
-  { name: "Portfolio Monitor", role: "Flags concentration, sharp moves, and thesis risk in held names." },
-  { name: "Idea Scout", role: "Surfaces new longs and watchlist candidates for PM approval." },
-  { name: "Memory Agent", role: "Stores why positions are owned, what changed, and what breaks them." },
-]
-
-function statusClasses(status: Status) {
+function statusBadge(status: Status) {
   if (status === "GREEN") return "bg-emerald-50 text-emerald-700 ring-emerald-200"
   if (status === "AMBER") return "bg-amber-50 text-amber-700 ring-amber-200"
   return "bg-rose-50 text-rose-700 ring-rose-200"
 }
 
-function scoreClasses(score: number) {
-  if (score >= 80) return "bg-emerald-50 text-emerald-700 ring-emerald-200"
-  if (score >= 70) return "bg-sky-50 text-sky-700 ring-sky-200"
+function fmt$(n: number) {
+  if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`
+  if (Math.abs(n) >= 1_000) return `$${n.toLocaleString("en-US", { maximumFractionDigits: 0 })}`
+  return `$${n.toFixed(2)}`
+}
+
+function fmtPct(n: number) {
+  return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`
+}
+
+// Placeholder seed data — replaced when DB has real records
+const SEED_IDEAS = [
+  { name: "Power & Grid Basket", ticker: null, conviction: 84, note: "Second-derivative AI capex beneficiaries.", nextAction: "Promote to research", status: "new", age: "3d" },
+  { name: "Payments Quality Screen", ticker: "V", conviction: 76, note: "Cross-border network quality with compounding traits.", nextAction: "Watch", status: "watch", age: "7d" },
+  { name: "Small-Cap Special Sit", ticker: null, conviction: 63, note: "Variant perception real but catalyst map needs proof.", nextAction: "Hold", status: "hold", age: "14d" },
+]
+
+const SEED_CATALYSTS = [
+  { ticker: "DKNG", title: "Re-underwrite after operating update", urgency: "today", action: "Review sizing" },
+  { ticker: "CEG", title: "Pressure-test policy & regulatory sensitivity", urgency: "high", action: "Reassess thesis" },
+  { ticker: "CING", title: "Finalize catalyst prep and sizing memo", urgency: "normal", action: "Prepare position" },
+  { ticker: "MACRO", title: "Refresh deployable-cash map for contributions", urgency: "low", action: "Capital allocation" },
+]
+
+const SEED_THESES = [
+  { ticker: "DKNG", title: "Thesis Drift", body: "Still a category winner but sizing should reflect slower near-term momentum.", mustRemainTrue: "Market share trajectory holds in core states", reviewCadence: "Weekly", confidence: 6 },
+  { ticker: "ALL", title: "Kill Criteria Framework", body: "Every position needs a clear non-price invalidation condition so exits are driven by process.", mustRemainTrue: "PM discipline on thesis documentation", reviewCadence: "Monthly", confidence: 9 },
+  { ticker: "ROTH", title: "Roth Capital Mandate", body: "Roth capital stays concentrated in long-duration compounders and structural winners.", mustRemainTrue: "Positions have >5yr runway and structural tailwinds", reviewCadence: "Quarterly", confidence: 10 },
+]
+
+function urgencyDot(u: string) {
+  if (u === "today") return "bg-rose-400"
+  if (u === "high") return "bg-amber-400"
+  if (u === "normal") return "bg-sky-400"
+  return "bg-slate-300"
+}
+
+function urgencyLabel(u: string) {
+  if (u === "today") return "Today"
+  if (u === "high") return "High"
+  if (u === "normal") return "This week"
+  return "Low"
+}
+
+function convictionColor(c: number) {
+  if (c >= 80) return "bg-emerald-50 text-emerald-700 ring-emerald-200"
+  if (c >= 70) return "bg-sky-50 text-sky-700 ring-sky-200"
   return "bg-amber-50 text-amber-700 ring-amber-200"
 }
 
@@ -97,12 +75,12 @@ export default async function HomePage() {
   const cookieStore = await cookies()
   const supabase = createClient(cookieStore)
 
-  const [holdingsRes, balanceRes, briefRes] = await Promise.all([
+  const [holdingsRes, balanceRes, briefRes, catalystsRes, ideasRes, thesesRes] = await Promise.all([
     supabase
       .from("holdings")
-      .select("ticker, theme, weight_pct, market_value, pnl_pct, status, accounts(name)")
+      .select("id, ticker, theme, weight_pct, market_value, cost_basis, shares, pnl_pct, status, last_synced, accounts(name)")
       .eq("is_active", true)
-      .order("weight_pct", { ascending: false }),
+      .order("market_value", { ascending: false }),
     supabase
       .from("balances")
       .select("value, cash_available")
@@ -116,306 +94,346 @@ export default async function HomePage() {
       .order("date", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    supabase
+      .from("catalyst_events")
+      .select("ticker, title, urgency, due_date, type")
+      .eq("is_complete", false)
+      .order("due_date", { ascending: true })
+      .limit(6),
+    supabase
+      .from("ideas")
+      .select("name, ticker, note, score, status, created_at")
+      .in("status", ["new", "watch", "promote"])
+      .order("score", { ascending: false })
+      .limit(5),
+    supabase
+      .from("theses")
+      .select("ticker, title, body, kill_criteria, conviction, status, updated_at")
+      .eq("status", "active")
+      .order("updated_at", { ascending: false })
+      .limit(4),
   ])
 
-  const holdings = holdingsRes.data
+  const holdings = holdingsRes.data ?? []
   const balance = balanceRes.data
   const brief = briefRes.data
+  const dbCatalysts = catalystsRes.data ?? []
+  const dbIdeas = ideasRes.data ?? []
+  const dbTheses = thesesRes.data ?? []
 
-  const livePositions = (holdings ?? []).map((h) => ({
-    ticker: h.ticker,
-    theme: h.theme ?? "",
-    account: (Array.isArray(h.accounts) ? h.accounts[0]?.name : (h.accounts as { name: string } | null)?.name) ?? "",
-    weight: `${h.weight_pct}%`,
-    value: `$${Number(h.market_value).toLocaleString()}`,
-    pnl: `${h.pnl_pct > 0 ? "+" : ""}${h.pnl_pct}%`,
-    status: (h.status.toUpperCase()) as Status,
-  }))
+  // Derived metrics
+  const totalEquity = balance?.value ? Number(balance.value) : holdings.reduce((s, h) => s + Number(h.market_value ?? 0), 0)
+  const totalCash = Number(balance?.cash_available ?? 0)
+  const totalUnrealizedPL = holdings.reduce((s, h) => {
+    const mv = Number(h.market_value ?? 0)
+    const cb = Number(h.cost_basis ?? 0)
+    const shares = Number(h.shares ?? 0)
+    return s + (mv - cb * shares)
+  }, 0)
+  const totalCostBasis = holdings.reduce((s, h) => s + Number(h.cost_basis ?? 0) * Number(h.shares ?? 0), 0)
+  const unrealizedPct = totalCostBasis > 0 ? (totalUnrealizedPL / totalCostBasis) * 100 : 0
 
-  const netWorth = balance ? `$${Number(balance.value).toLocaleString()}` : "$742,900"
-  const cashAvailable = balance ? `$${Number(balance.cash_available).toLocaleString()}` : "$28,400"
+  const lastSynced = holdings.reduce((latest, h) => {
+    if (!h.last_synced) return latest
+    return !latest || h.last_synced > latest ? h.last_synced : latest
+  }, null as string | null)
 
-  const commandDeck = [
-    { label: "Total Net Worth", value: netWorth, delta: "+$6,420 day", note: "+0.87% move", tone: "text-slate-900" },
-    { label: "Deployable Cash", value: cashAvailable, delta: "$20K floor", note: "Safety discipline intact", tone: "text-emerald-700" },
-    { label: "Open Alerts", value: "3", delta: "1 thesis", note: "2 catalysts need review", tone: "text-amber-700" },
-    { label: "Morning Brief", value: "06:20 CT", delta: "Complete", note: "Agent sweep delivered", tone: "text-sky-700" },
-    { label: "Idea Queue", value: "4", delta: "2 high-conviction", note: "1 ready to promote", tone: "text-violet-700" },
-    { label: "Flight Status", value: "Ready", delta: "No stress signal", note: "Portfolio posture constructive", tone: "text-emerald-700" },
-  ]
+  const riskPosture: Status = holdings.some(h => h.status === "red") ? "RED"
+    : holdings.some(h => h.status === "amber") ? "AMBER"
+    : "GREEN"
+
+  const riskLabel = { GREEN: "Constructive", AMBER: "Cautious", RED: "Elevated" }[riskPosture]
+
+  const ideas = dbIdeas.length ? dbIdeas.map(i => ({
+    name: i.name,
+    ticker: i.ticker,
+    conviction: i.score ?? 0,
+    note: i.note ?? "",
+    nextAction: i.status === "promote" ? "Promote" : i.status === "watch" ? "Watch" : "Hold",
+    status: i.status,
+    age: i.created_at ? `${Math.floor((Date.now() - new Date(i.created_at).getTime()) / 86400000)}d` : "—",
+  })) : SEED_IDEAS
+
+  const catalysts = dbCatalysts.length ? dbCatalysts.map(c => ({
+    ticker: c.ticker ?? "MACRO",
+    title: c.title,
+    urgency: c.urgency,
+    action: c.type === "earnings" ? "Review earnings" : "Review position",
+  })) : SEED_CATALYSTS
+
+  const theses = dbTheses.length ? dbTheses.map(t => ({
+    ticker: t.ticker,
+    title: t.title,
+    body: t.body,
+    mustRemainTrue: t.kill_criteria ?? "—",
+    reviewCadence: "—",
+    confidence: t.conviction ?? 0,
+  })) : SEED_THESES
 
   return (
     <main className="min-h-screen bg-[#f5f6f8] text-slate-900">
       <AutoSync />
       <TickerTape />
 
+      {/* Nav */}
+      <div className="border-b border-slate-200 bg-white px-4 py-3 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-[1600px] items-center justify-between">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.3em] text-slate-400">Klingensmith Capital</p>
+            <h1 className="text-base font-semibold tracking-tight text-slate-900">Portfolio Manager Cockpit</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <SyncSchwabButton />
+            <SyncPricesButton />
+            <GenerateBriefButton />
+            <form action={signOut}>
+              <button type="submit" className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-400 transition hover:border-rose-200 hover:text-rose-500">
+                Sign out
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
       <div className="mx-auto flex max-w-[1600px] flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
 
-        {/* Zone 1 — Command Bar */}
+        {/* Zone 1 — Executive Snapshot */}
         <section className="panel-shell reveal-fade rounded-2xl px-6 py-5">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-5">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.3em] text-slate-400">Klingensmith Capital</p>
-              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Portfolio Manager Cockpit</h1>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {["Cockpit", "Portfolio", "Morning Brief", "Ideas", "Memory", "Operations"].map((tab, i) => (
-                <button key={tab} className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${i === 0 ? "bg-slate-900 text-white" : "border border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700"}`}>
-                  {tab}
-                </button>
-              ))}
-              <form action={signOut}>
-                <button type="submit" className="rounded-full border border-slate-200 px-4 py-1.5 text-sm font-medium text-slate-400 transition hover:border-rose-200 hover:text-rose-500">
-                  Sign out
-                </button>
-              </form>
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Executive Snapshot</p>
+            <div className="flex items-center gap-2">
+              {lastSynced ? (
+                <span className="text-[11px] text-slate-400">
+                  Synced {new Date(lastSynced).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                </span>
+              ) : (
+                <span className="text-[11px] text-amber-500">No data synced yet</span>
+              )}
+              <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.15em] ring-1 ${statusBadge(riskPosture)}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${statusDot(riskPosture)}`} />
+                {riskLabel}
+              </span>
             </div>
           </div>
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
-            {commandDeck.map((card) => (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6">
+            {[
+              { label: "Total Equity", value: fmt$(totalEquity), sub: "Portfolio value", tone: "text-slate-900" },
+              { label: "Total Cash", value: fmt$(totalCash), sub: "Available capital", tone: "text-emerald-700" },
+              { label: "Buying Power", value: fmt$(Math.max(0, totalCash - 20000)), sub: "$20K floor maintained", tone: "text-sky-700" },
+              { label: "Unrealized P/L", value: fmt$(totalUnrealizedPL), sub: fmtPct(unrealizedPct), tone: totalUnrealizedPL >= 0 ? "text-emerald-700" : "text-rose-600" },
+              { label: "Realized P/L", value: "—", sub: "YTD — not tracked yet", tone: "text-slate-500" },
+              { label: "Risk Posture", value: riskLabel, sub: `${holdings.filter(h => h.status !== "green").length} positions flagged`, tone: riskPosture === "GREEN" ? "text-emerald-700" : riskPosture === "AMBER" ? "text-amber-700" : "text-rose-600" },
+            ].map((card) => (
               <div key={card.label} className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">{card.label}</p>
+                <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">{card.label}</p>
                 <p className={`mt-2 text-xl font-semibold tracking-tight ${card.tone}`}>{card.value}</p>
-                <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px] text-slate-400">
-                  <span>{card.delta}</span>
-                  <span className="text-right">{card.note}</span>
-                </div>
+                <p className="mt-1 text-[11px] text-slate-400">{card.sub}</p>
               </div>
             ))}
           </div>
         </section>
 
-        <div className="grid gap-5 xl:grid-cols-[1.55fr_0.9fr]">
-          <div className="space-y-5">
-
-            {/* Zone 2 — Morning Brief */}
-            <section className="panel-shell reveal-fade rounded-2xl p-6">
-              <div className="flex flex-col gap-3 border-b border-slate-100 pb-5 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Morning Brief</p>
-                  <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Pre-market setup · decision support</h2>
-                </div>
-                <div className="flex items-center gap-3">
-                  {brief?.generated_at && (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.2em] text-emerald-700">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                      {new Date(brief.generated_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZoneName: "short" })}
-                    </span>
-                  )}
-                  <GenerateBriefButton />
-                </div>
-              </div>
-
-              {brief ? (
-                <div className="mt-5 grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
-                  <div className="space-y-2.5">
-                    <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm leading-7 text-slate-600">{brief.market_summary}</div>
-                    <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 text-sm leading-7 text-slate-600">{brief.portfolio_notes}</div>
-                    {brief.watchpoints?.length > 0 && (
-                      <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
-                        <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Watchpoints</p>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {brief.watchpoints.map((w: string) => (
-                            <span key={w} className="rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-amber-200">{w}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {brief.market_context && (
-                      <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                        <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Market Context</p>
-                        <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                          {[
-                            { label: "Leadership", note: (brief.market_context as { leadership: string }).leadership },
-                            { label: "Rates", note: (brief.market_context as { rates: string }).rates },
-                            { label: "Risk Posture", note: (brief.market_context as { risk_posture: string }).risk_posture },
-                          ].map((ctx) => (
-                            <div key={ctx.label}>
-                              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">{ctx.label}</p>
-                              <p className="mt-1 text-sm text-slate-600">{ctx.note}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">PM Flight Plan</p>
-                    <ul className="mt-3 space-y-3">
-                      {(brief.flight_plan as string[]).map((item, i) => (
-                        <li key={i} className="flex gap-3 text-sm leading-6 text-slate-600">
-                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-500">{i + 1}</span>
-                          {item}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-8 flex flex-col items-center justify-center gap-3 py-10 text-center">
-                  <p className="text-sm text-slate-500">No brief generated yet for today.</p>
-                  <p className="text-xs text-slate-400">Hit "Generate Brief" to run the Morning Brief Agent against your live portfolio.</p>
-                </div>
-              )}
-            </section>
-
-            {/* Zone 3 — Portfolio Snapshot */}
-            <section className="panel-shell reveal-fade rounded-2xl p-6">
-              <div className="flex flex-col gap-3 border-b border-slate-100 pb-5 lg:flex-row lg:items-end lg:justify-between">
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Portfolio Snapshot</p>
-                  <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Holdings, concentration, and pressure points</h2>
-                </div>
-                <div className="flex items-center gap-2">
-                  <SyncSchwabButton />
-                  <SyncPricesButton />
-                </div>
-              </div>
-              <div className="mt-5 grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
-                <div className="overflow-hidden rounded-xl border border-slate-100">
-                  <div className="grid grid-cols-[0.9fr_1.4fr_0.9fr_0.6fr_0.75fr_0.65fr] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-slate-400">
-                    <div>Ticker</div><div>Thesis</div><div>Account</div>
-                    <div className="text-right">Weight</div><div className="text-right">Value</div><div className="text-right">Status</div>
-                  </div>
-                  {(livePositions.length ? livePositions : positions).map((p) => (
-                    <div key={p.ticker} className="grid grid-cols-[0.9fr_1.4fr_0.9fr_0.6fr_0.75fr_0.65fr] gap-3 border-b border-slate-50 px-4 py-3.5 text-sm last:border-b-0">
-                      <div>
-                        <p className="font-semibold text-slate-900">{p.ticker}</p>
-                        <p className="mt-0.5 text-xs text-slate-400">{p.pnl}</p>
-                      </div>
-                      <div className="text-slate-600">{p.theme}</div>
-                      <div className="text-slate-500">{p.account}</div>
-                      <div className="text-right font-medium text-slate-700">{p.weight}</div>
-                      <div className="text-right font-semibold text-slate-900">{p.value}</div>
-                      <div className="flex justify-end">
-                        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.15em] ring-1 ${statusClasses(p.status)}`}>{p.status}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="space-y-4">
-                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Top Movers</p>
-                    <div className="mt-3 space-y-2">
-                      {movers.map((m) => (
-                        <div key={m.ticker} className="flex items-start justify-between gap-3 rounded-lg border border-slate-100 bg-white p-3">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">{m.ticker}</p>
-                            <p className="mt-0.5 text-xs text-slate-500">{m.driver}</p>
-                          </div>
-                          <span className={`text-sm font-semibold ${m.tone}`}>{m.move}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Concentration Map</p>
-                    <div className="mt-3 space-y-3">
-                      {allocation.map((b) => (
-                        <div key={b.name}>
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-slate-700">{b.name}</span>
-                            <span className="text-slate-400">{b.weight}% · {b.change}</span>
-                          </div>
-                          <div className="mt-1.5 h-1.5 rounded-full bg-slate-200">
-                            <div className="h-1.5 rounded-full bg-slate-800" style={{ width: `${b.weight}%` }} />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Zone 4 — Idea Pipeline + Thesis Memory */}
-            <div className="grid gap-5 lg:grid-cols-2">
-              <section className="panel-shell reveal-fade rounded-2xl p-6">
-                <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Idea Pipeline</p>
-                <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Candidates waiting for PM judgment</h2>
-                <div className="mt-5 space-y-3">
-                  {ideas.map((idea) => (
-                    <div key={idea.name} className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                        <div>
-                          <p className="font-semibold text-slate-900">{idea.name}</p>
-                          <p className="mt-1 text-sm leading-6 text-slate-500">{idea.note}</p>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.15em] ring-1 ${scoreClasses(idea.score)}`}>
-                            {idea.score}
-                          </span>
-                          <span className="rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.15em] text-slate-500">
-                            {idea.action}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
-
-              <section className="panel-shell reveal-fade rounded-2xl p-6">
-                <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Thesis Memory</p>
-                <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">What changed and what must remain true</h2>
-                <div className="mt-5 space-y-3">
-                  {memory.map((item) => (
-                    <div key={item.title} className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                      <p className="font-semibold text-slate-900">{item.title}</p>
-                      <p className="mt-1 text-sm leading-6 text-slate-500">{item.body}</p>
-                    </div>
-                  ))}
-                </div>
-              </section>
+        {/* Zone 2 — Consolidated Portfolio Table */}
+        <section className="panel-shell reveal-fade rounded-2xl p-6">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Portfolio</p>
+              <h2 className="mt-0.5 text-xl font-semibold tracking-tight text-slate-900">Consolidated book · all accounts</h2>
             </div>
+            <p className="text-[11px] text-slate-400">{holdings.length} positions · sorted by size</p>
           </div>
 
-          {/* Zone 5 — Memory & Ops Rail (sidebar) */}
-          <aside className="space-y-5">
-            <section className="panel-shell reveal-fade rounded-2xl p-6">
-              <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Catalyst Radar</p>
-              <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Upcoming events</h2>
-              <div className="mt-5 space-y-2.5">
-                {catalysts.map((c) => (
-                  <div key={c.item} className="flex gap-3 rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    <div className={`mt-1 h-2 w-2 shrink-0 rounded-full ${c.dot}`} />
+          {holdings.length > 0 ? (
+            <div className="mt-5 overflow-hidden rounded-xl border border-slate-100">
+              <div className="grid grid-cols-[2rem_1fr_1fr_1fr_1fr_1fr_1fr_5rem] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                <div />
+                <div>Ticker · Account</div>
+                <div className="text-right">Market Value</div>
+                <div className="text-right">Cost Basis</div>
+                <div className="text-right">Unrealized P/L</div>
+                <div className="text-right">P/L %</div>
+                <div className="text-right">Weight</div>
+                <div className="text-center">Status</div>
+              </div>
+              {holdings.map((h) => {
+                const mv = Number(h.market_value ?? 0)
+                const cb = Number(h.cost_basis ?? 0)
+                const shares = Number(h.shares ?? 0)
+                const totalCb = cb * shares
+                const upl = mv - totalCb
+                const uplPct = Number(h.pnl_pct ?? 0)
+                const status = (h.status?.toUpperCase() ?? "GREEN") as Status
+                const acctName = (Array.isArray(h.accounts) ? h.accounts[0]?.name : (h.accounts as { name: string } | null)?.name) ?? "—"
+
+                return (
+                  <div key={h.id} className="grid grid-cols-[2rem_1fr_1fr_1fr_1fr_1fr_1fr_5rem] gap-3 border-b border-slate-50 px-4 py-3.5 text-sm last:border-b-0 hover:bg-slate-50/60 transition-colors">
+                    <div className="flex items-center">
+                      <span className={`h-2 w-2 rounded-full ${statusDot(status)}`} />
+                    </div>
                     <div>
-                      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400">{c.when}</p>
-                      <p className="mt-0.5 text-sm text-slate-600">{c.item}</p>
+                      <p className="font-semibold text-slate-900">{h.ticker}</p>
+                      <p className="text-[11px] text-slate-400">{acctName}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium text-slate-900">{fmt$(mv)}</p>
+                      <p className="text-[11px] text-slate-400">{shares > 0 ? `${shares} sh` : "—"}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-slate-700">{totalCb > 0 ? fmt$(totalCb) : "—"}</p>
+                      <p className="text-[11px] text-slate-400">{cb > 0 ? `${fmt$(cb)}/sh` : "—"}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-medium ${upl >= 0 ? "text-emerald-700" : "text-rose-600"}`}>{totalCb > 0 ? fmt$(upl) : "—"}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-medium ${uplPct >= 0 ? "text-emerald-700" : "text-rose-600"}`}>{fmtPct(uplPct)}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium text-slate-700">{Number(h.weight_pct ?? 0).toFixed(1)}%</p>
+                    </div>
+                    <div className="flex items-center justify-center">
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] ring-1 ${statusBadge(status)}`}>
+                        {status}
+                      </span>
                     </div>
                   </div>
-                ))}
-              </div>
-            </section>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="mt-8 rounded-xl border border-dashed border-slate-200 py-12 text-center">
+              <p className="text-sm text-slate-500">No positions synced yet.</p>
+              <p className="mt-1 text-xs text-slate-400">Hit Sync Schwab in the nav to pull your live holdings.</p>
+            </div>
+          )}
+        </section>
 
-            <section className="panel-shell reveal-fade rounded-2xl p-6">
-              <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Operations Rail</p>
-              <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Cash discipline and document flow</h2>
-              <div className="mt-5 space-y-2.5">
-                {opsRail.map((item) => (
-                  <div key={item.label} className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400">{item.label}</p>
-                    <p className="mt-1.5 text-lg font-semibold text-slate-900">{item.value}</p>
-                    <p className="mt-0.5 text-sm text-slate-500">{item.sub}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
+        {/* Zone 3 — Decision Zone: Catalysts · Ideas · Operations */}
+        <div className="grid gap-5 lg:grid-cols-3">
 
-            <section className="panel-shell reveal-fade rounded-2xl p-6">
-              <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Agent Crew</p>
-              <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Embedded agents</h2>
-              <div className="mt-5 space-y-2.5">
-                {agents.map((agent) => (
-                  <div key={agent.name} className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                    <p className="text-sm font-semibold text-slate-900">{agent.name}</p>
-                    <p className="mt-1 text-sm text-slate-500">{agent.role}</p>
+          {/* Catalyst Radar */}
+          <section className="panel-shell reveal-fade rounded-2xl p-6">
+            <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Catalyst Radar</p>
+            <h2 className="mt-0.5 text-base font-semibold tracking-tight text-slate-900">What requires action</h2>
+            <div className="mt-4 space-y-2.5">
+              {catalysts.map((c, i) => (
+                <div key={i} className="rounded-xl border border-slate-100 bg-slate-50 p-3.5">
+                  <div className="flex items-start gap-3">
+                    <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${urgencyDot(c.urgency)}`} />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-semibold text-slate-900">{c.ticker}</span>
+                        <span className="text-[10px] uppercase tracking-[0.12em] text-slate-400">{urgencyLabel(c.urgency)}</span>
+                      </div>
+                      <p className="mt-0.5 text-sm text-slate-600">{c.title}</p>
+                      <p className="mt-1 text-[11px] text-sky-600">{c.action}</p>
+                    </div>
                   </div>
-                ))}
-              </div>
-            </section>
-          </aside>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Idea Pipeline */}
+          <section className="panel-shell reveal-fade rounded-2xl p-6">
+            <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Idea Pipeline</p>
+            <h2 className="mt-0.5 text-base font-semibold tracking-tight text-slate-900">Candidates for PM judgment</h2>
+            <div className="mt-4 space-y-2.5">
+              {ideas.map((idea, i) => (
+                <div key={i} className="rounded-xl border border-slate-100 bg-slate-50 p-3.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-slate-900 truncate">{idea.name}</p>
+                        {idea.ticker && <span className="text-[10px] text-slate-400">{idea.ticker}</span>}
+                      </div>
+                      <p className="mt-0.5 text-xs leading-5 text-slate-500 line-clamp-2">{idea.note}</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${convictionColor(idea.conviction)}`}>
+                      {idea.conviction}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
+                    <span>{idea.age} old</span>
+                    <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 font-medium">{idea.nextAction}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {/* Operations Strip */}
+          <section className="panel-shell reveal-fade rounded-2xl p-6">
+            <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Operations</p>
+            <h2 className="mt-0.5 text-base font-semibold tracking-tight text-slate-900">Status · actions · data</h2>
+
+            <div className="mt-4 space-y-2.5">
+              {[
+                { label: "Data Freshness", value: lastSynced ? new Date(lastSynced).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "Not synced", ok: !!lastSynced },
+                { label: "Cash Floor", value: totalCash >= 20000 ? "Maintained" : "Below floor", ok: totalCash >= 20000 },
+                { label: "Positions Loaded", value: `${holdings.length} active`, ok: holdings.length > 0 },
+                { label: "Morning Brief", value: brief?.generated_at ? new Date(brief.generated_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Not generated", ok: !!brief },
+              ].map((item) => (
+                <div key={item.label} className="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 px-4 py-3">
+                  <p className="text-xs text-slate-500">{item.label}</p>
+                  <span className={`text-xs font-medium ${item.ok ? "text-emerald-700" : "text-amber-600"}`}>{item.value}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 space-y-2">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-slate-400">Morning Brief</p>
+              {brief && (
+                <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+                  {brief.market_summary}
+                </div>
+              )}
+              {brief?.watchpoints?.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {(brief.watchpoints as string[]).map((w) => (
+                    <span key={w} className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-amber-200">{w}</span>
+                  ))}
+                </div>
+              )}
+              <GenerateBriefButton />
+            </div>
+          </section>
         </div>
+
+        {/* Zone 4 — Thesis Memory */}
+        <section className="panel-shell reveal-fade rounded-2xl p-6">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Thesis Memory</p>
+              <h2 className="mt-0.5 text-xl font-semibold tracking-tight text-slate-900">Why each position is owned · what must remain true</h2>
+            </div>
+          </div>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {theses.map((t, i) => (
+              <div key={i} className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">{t.ticker}</span>
+                    <p className="mt-0.5 font-semibold text-slate-900">{t.title}</p>
+                  </div>
+                  {t.confidence > 0 && (
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${convictionColor(t.confidence * 10)}`}>
+                      {t.confidence}/10
+                    </span>
+                  )}
+                </div>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{t.body}</p>
+                {t.mustRemainTrue && t.mustRemainTrue !== "—" && (
+                  <div className="mt-3 rounded-lg border border-rose-100 bg-rose-50/60 px-3 py-2">
+                    <p className="text-[10px] font-medium uppercase tracking-[0.15em] text-rose-400">Must remain true</p>
+                    <p className="mt-0.5 text-xs text-rose-700">{t.mustRemainTrue}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+
       </div>
     </main>
   )
