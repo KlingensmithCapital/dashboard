@@ -83,11 +83,9 @@ export default async function HomePage() {
       .order("market_value", { ascending: false }),
     supabase
       .from("balances")
-      .select("value, cash_available")
-      .is("account_id", null)
+      .select("account_id, value, cash_available, date")
       .order("date", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+      .limit(50),
     supabase
       .from("morning_briefs")
       .select("market_summary, portfolio_notes, flight_plan, market_context, watchpoints, generated_at")
@@ -115,15 +113,28 @@ export default async function HomePage() {
   ])
 
   const holdings = holdingsRes.data ?? []
-  const balance = balanceRes.data
+  const allBalances = balanceRes.data ?? []
+  // Take the most recent balance row per account
+  const latestBalanceByAccount = new Map<string, { value: number; cash_available: number }>()
+  for (const b of allBalances) {
+    if (b.account_id && !latestBalanceByAccount.has(b.account_id)) {
+      latestBalanceByAccount.set(b.account_id, {
+        value: Number(b.value ?? 0),
+        cash_available: Number(b.cash_available ?? 0),
+      })
+    }
+  }
   const brief = briefRes.data
   const dbCatalysts = catalystsRes.data ?? []
   const dbIdeas = ideasRes.data ?? []
   const dbTheses = thesesRes.data ?? []
 
-  // Derived metrics
-  const totalEquity = balance?.value ? Number(balance.value) : holdings.reduce((s, h) => s + Number(h.market_value ?? 0), 0)
-  const totalCash = Number(balance?.cash_available ?? 0)
+  // Derived metrics — sum across all accounts
+  const balanceEntries = Array.from(latestBalanceByAccount.values())
+  const totalEquity = balanceEntries.length > 0
+    ? balanceEntries.reduce((s, b) => s + b.value, 0)
+    : holdings.reduce((s, h) => s + Number(h.market_value ?? 0), 0)
+  const totalCash = balanceEntries.reduce((s, b) => s + b.cash_available, 0)
   const totalUnrealizedPL = holdings.reduce((s, h) => {
     const mv = Number(h.market_value ?? 0)
     const cb = Number(h.cost_basis ?? 0)
